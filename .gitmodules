@@ -1,6 +1,0 @@
-[submodule "qemu"]
-	path = qemu
-	url = https://github.com/espressif/qemu.git
-[submodule "honggfuzz"]
-	path = honggfuzz
-	url = https://github.com/google/honggfuzz/
