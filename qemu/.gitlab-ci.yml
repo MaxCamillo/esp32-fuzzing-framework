@@ -1,0 +1,59 @@
+stages:
+  - build
+  - deploy
+
+variables:
+    TARGET_LIST: xtensa-softmmu
+
+.use_ci_tools: &use_ci_tools |
+  curl -sSL ${CIT_LOADER_URL} -o cit_loader.sh && sh cit_loader.sh
+  source citools/import_functions
+
+build-linux:
+  stage: build
+  image: $CI_DOCKER_REGISTRY/qemu-build:1
+  tags:
+    - build
+    - internet
+  artifacts:
+    paths:
+      - dist/qemu-*.tar.bz2
+      - dist/archive_name_*
+    expire_in: 1 week
+  script:
+    - ./configure --prefix=/opt/qemu --target-list=${TARGET_LIST} --enable-debug --disable-strip --disable-user --disable-capstone --disable-vnc --disable-sdl --disable-gtk
+    - make -j8
+    - test -z ${CI_COMMIT_TAG} && echo "Not building artifacts archive" && exit 0
+    - make install
+    - find /opt/qemu/share/qemu -maxdepth 1 -mindepth 1 -not -name 'esp*.bin' -exec rm -rf {} \;
+    - mkdir -p dist
+    - export DIST_DIR=${PWD}/dist
+    - export ARCHIVE_NAME=qemu-${CI_COMMIT_TAG}.tar.bz2
+    - cd /opt
+    - tar cjvf ${DIST_DIR}/${ARCHIVE_NAME} qemu
+    - echo $ARCHIVE_NAME >${DIST_DIR}/archive_name_${CI_JOB_NAME}
+
+upload_to_http:
+  image: $CI_DOCKER_REGISTRY/qemu-build:1
+  stage: deploy
+  tags:
+    - deploy
+    - shiny
+  when: manual
+  allow_failure: true
+  variables:
+    GIT_STRATEGY: none
+  only:
+    - tags
+  before_script:
+    - *use_ci_tools
+  script:
+    - cit_add_ssh_key "${HTTP_UPLOAD_KEY}" "$(cit_parse_url_host ${HTTP_UPLOAD_DIR})"
+    # List of archives in dist/
+    - FILES=$(find dist -name archive_name_\* -exec cat {} \+)
+    - cd dist
+    - scp ${FILES} ${HTTP_UPLOAD_DIR}
+    # Show info
+    - /bin/ls -l ${FILES}
+    - sha256sum ${FILES}
+    - echo -e "\nArchives were published there:\n\n$(for n in ${FILES}; do echo "${HTTP_PUBLIC_DIR}/${n}"; done)\n"
