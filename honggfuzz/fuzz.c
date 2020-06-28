@@ -128,7 +128,7 @@ static void fuzz_setDynamicMainState(run_t* run) {
      */
     if (run->global->io.dynfileqCnt == 0) {
         input_addDynamicInput(run->global, (const uint8_t*)"", /* size= */ 0U,
-            /* cov */ (uint64_t[4]){0, 0, 0, 0}, /* path= */ "[DYNAMIC]");
+            /* cov */ (uint64_t[5]){0, 0, 0, 0,0}, /* path= */ "[DYNAMIC]");
     }
     snprintf(run->origFileName, sizeof(run->origFileName), "[DYNAMIC]");
     LOG_I("Entering phase 3/3: Dynamic Main (Feedback Driven Mode)");
@@ -141,18 +141,21 @@ static void fuzz_perfFeedbackForMinimization(run_t* run) {
         ATOMIC_GET(run->global->feedback.feedbackMap->pidFeedbackEdge[run->fuzzNo]);
     uint64_t softCntCmp =
         ATOMIC_GET(run->global->feedback.feedbackMap->pidFeedbackCmp[run->fuzzNo]);
+    uint64_t softCntStrCmp =
+        ATOMIC_GET(run->global->feedback.feedbackMap->pidFeedbackStrCmp[run->fuzzNo]);
     uint64_t cpuInstr = run->linux.hwCnts.cpuInstrCnt;
     uint64_t cpuBranch = run->linux.hwCnts.cpuBranchCnt;
 
-    uint64_t cov[4] = {
+    uint64_t cov[5] = {
         [0] = softCntEdge + softCntPc,
         [1] = run->dynamicFileSz ? (64 - (uint64_t)log2(run->dynamicFileSz))
                                  : 64, /* The smaller input size, the better */
         [2] = cpuInstr + cpuBranch,
-        [3] = softCntCmp,
+        [3] = softCntCmp ,
+        [4] = softCntStrCmp,
     };
-    LOG_I("Corpus Minimization: len:%zu, cov:%" PRIu64 "/%" PRIu64 "/%" PRIu64 "/%" PRIu64,
-        run->dynamicFileSz, cov[0], cov[1], cov[2], cov[3]);
+    LOG_I("Corpus Minimization: len:%zu, cov:%" PRIu64 "/%" PRIu64 "/%" PRIu64 "/%" PRIu64 "/%" PRIu64,
+        run->dynamicFileSz, cov[0], cov[1], cov[2], cov[3], cov[4]);
 
     input_addDynamicInput(
         run->global, run->dynamicFile, run->dynamicFileSz, cov, run->origFileName);
@@ -169,6 +172,9 @@ static void fuzz_perfFeedbackForMinimization(run_t* run) {
     memset(run->global->feedback.feedbackMap->bbMapCmp, '\0',
         sizeof(run->global->feedback.feedbackMap->bbMapCmp));
 
+    ATOMIC_SET(run->global->feedback.feedbackMap->pidFeedbackStrCmp[run->fuzzNo], 0);
+    memset(run->global->feedback.feedbackMap->bbMapStrCmp, '\0',
+        sizeof(run->global->feedback.feedbackMap->bbMapStrCmp));
     memset(&run->global->linux.hwCnts, '\0', sizeof(run->global->linux.hwCnts));
 }
 
@@ -195,12 +201,15 @@ static void fuzz_perfFeedback(run_t* run) {
     uint64_t softCntCmp =
         ATOMIC_GET(run->global->feedback.feedbackMap->pidFeedbackCmp[run->fuzzNo]);
     ATOMIC_CLEAR(run->global->feedback.feedbackMap->pidFeedbackCmp[run->fuzzNo]);
+    uint64_t softCntStrCmp =
+        ATOMIC_GET(run->global->feedback.feedbackMap->pidFeedbackStrCmp[run->fuzzNo]);
+    ATOMIC_CLEAR(run->global->feedback.feedbackMap->pidFeedbackStrCmp[run->fuzzNo]);
 
     int64_t diff0 = run->global->linux.hwCnts.cpuInstrCnt - run->linux.hwCnts.cpuInstrCnt;
     int64_t diff1 = run->global->linux.hwCnts.cpuBranchCnt - run->linux.hwCnts.cpuBranchCnt;
 
     /* Any increase in coverage (edge, pc, cmp, hw) counters forces adding input to the corpus */
-    if (run->linux.hwCnts.newBBCnt > 0 || softCntPc > 0 || softCntEdge > 0 || softCntCmp > 0 ||
+    if (run->linux.hwCnts.newBBCnt > 0 || softCntPc > 0 || softCntEdge > 0 || softCntCmp > 0 || softCntStrCmp > 0 ||
         diff0 < 0 || diff1 < 0) {
         if (diff0 < 0) {
             run->global->linux.hwCnts.cpuInstrCnt = run->linux.hwCnts.cpuInstrCnt;
@@ -212,6 +221,7 @@ static void fuzz_perfFeedback(run_t* run) {
         run->global->linux.hwCnts.softCntPc += softCntPc;
         run->global->linux.hwCnts.softCntEdge += softCntEdge;
         run->global->linux.hwCnts.softCntCmp += softCntCmp;
+        run->global->linux.hwCnts.softCntStrCmp += softCntStrCmp;
 
         if (run->global->cfg.minimize) {
             LOG_I("Keeping '%s' in '%s'", run->origFileName,
@@ -221,17 +231,18 @@ static void fuzz_perfFeedback(run_t* run) {
                 LOG_E("Couldn't save the coverage data to '%s'", run->global->io.outputDir);
             }
         } else {
-            LOG_I("Size:%zu (i,b,hw,ed,ip,cmp): %" PRIu64 "/%" PRIu64 "/%" PRIu64 "/%" PRIu64
-                  "/%" PRIu64 "/%" PRIu64 ", Tot:%" PRIu64 "/%" PRIu64 "/%" PRIu64 "/%" PRIu64
-                  "/%" PRIu64 "/%" PRIu64,
+            LOG_I("Size:%zu (i,b,hw,ed,ip,cmp,str): %" PRIu64 "/%" PRIu64 "/%" PRIu64 "/%" PRIu64
+                  "/%" PRIu64 "/%" PRIu64 "/%" PRIu64 ", Tot:%" PRIu64 "/%" PRIu64 "/%" PRIu64 "/%" PRIu64
+                  "/%" PRIu64 "/%" PRIu64 "/%" PRIu64,
                 run->dynamicFileSz, run->linux.hwCnts.cpuInstrCnt, run->linux.hwCnts.cpuBranchCnt,
-                run->linux.hwCnts.newBBCnt, softCntEdge, softCntPc, softCntCmp,
+                run->linux.hwCnts.newBBCnt, softCntEdge, softCntPc, softCntCmp, softCntStrCmp,
                 run->global->linux.hwCnts.cpuInstrCnt, run->global->linux.hwCnts.cpuBranchCnt,
                 run->global->linux.hwCnts.bbCnt, run->global->linux.hwCnts.softCntEdge,
-                run->global->linux.hwCnts.softCntPc, run->global->linux.hwCnts.softCntCmp);
+                run->global->linux.hwCnts.softCntPc, run->global->linux.hwCnts.softCntCmp
+                , run->global->linux.hwCnts.softCntStrCmp);
 
             input_addDynamicInput(run->global, run->dynamicFile, run->dynamicFileSz,
-                (uint64_t[4]){0, 0, 0, 0}, "[DYNAMIC]");
+                (uint64_t[5]){0, 0, 0, 0, 0}, "[DYNAMIC]");
         }
 
         if (run->global->socketFuzzer.enabled) {

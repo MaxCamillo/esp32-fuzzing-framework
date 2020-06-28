@@ -110,6 +110,7 @@ typedef struct {
     uint64_t softCntPc;
     uint64_t softCntEdge;
     uint64_t softCntCmp;
+    uint64_t softCntStrCmp;
 } hwcnt_t;
 
 typedef struct {
@@ -155,7 +156,7 @@ typedef enum {
 
 struct dynfile_t {
     size_t size;
-    uint64_t cov[4];
+    uint64_t cov[5];
     char path[PATH_MAX];
     TAILQ_ENTRY(dynfile_t) pointers;
     uint8_t data[];
@@ -171,9 +172,11 @@ typedef struct {
     bool pcGuardMap[_HF_PC_GUARD_MAX];
     uint8_t bbMapPc[_HF_PERF_BITMAP_SIZE_16M];
     uint32_t bbMapCmp[_HF_PERF_BITMAP_SIZE_16M];
+    uint8_t bbMapStrCmp[_HF_PERF_BITMAP_SIZE_16M];
     uint64_t pidFeedbackPc[_HF_THREAD_MAX];
     uint64_t pidFeedbackEdge[_HF_THREAD_MAX];
     uint64_t pidFeedbackCmp[_HF_THREAD_MAX];
+    uint64_t pidFeedbackStrCmp[_HF_THREAD_MAX];
     uint64_t guardNb;
 } feedback_t;
 

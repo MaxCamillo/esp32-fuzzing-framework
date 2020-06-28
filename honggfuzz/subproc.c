@@ -124,7 +124,7 @@ const char* subproc_StatusToStr(int status, char* str, size_t len) {
 }
 
 static bool subproc_persistentSendFileIndicator(run_t* run) {
-    uint64_t len = (uint64_t)run->dynamicFileSz;
+    size_t len = run->dynamicFileSz;
     if (!files_sendToSocketNB(run->persistentSock, (uint8_t*)&len, sizeof(len))) {
         PLOG_W("files_sendToSocketNB(len=%zu)", sizeof(len));
         return false;

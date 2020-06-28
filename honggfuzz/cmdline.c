@@ -391,6 +391,7 @@ bool cmdlineParse(int argc, char* argv[], honggfuzz_t* hfuzz) {
                         .newBBCnt = 0ULL,
                         .softCntPc = 0ULL,
                         .softCntCmp = 0ULL,
+                        .softCntStrCmp = 0ULL,
                     },
                 .dynamicCutOffAddr = ~(0ULL),
                 .disableRandomization = true,

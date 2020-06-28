@@ -96,6 +96,7 @@ void instrumentClearNewCov() {
     feedback->pidFeedbackPc[my_thread_no] = 0U;
     feedback->pidFeedbackEdge[my_thread_no] = 0U;
     feedback->pidFeedbackCmp[my_thread_no] = 0U;
+    feedback->pidFeedbackStrCmp[my_thread_no] = 0U;
 }
 
 /*
@@ -132,6 +133,28 @@ HF_REQUIRE_SSE42_POPCNT void __sanitizer_cov_trace_pc(void) {
 
 HF_REQUIRE_SSE42_POPCNT void hfuzz_trace_pc(uintptr_t pc) {
     hfuzz_trace_pc_internal(pc);
+}
+
+HF_REQUIRE_SSE42_POPCNT void hfuzz_trace_strcmp(uint64_t callee, uint64_t calleeCallee, uint8_t *str1, uint8_t *str2, uint64_t size) {
+
+    u_int8_t matchingChars = 0;
+    for(uint64_t i = 0;i < size; i++) {
+        if(str1[i] == 0 || str2[i] == 0){
+            break;
+        } else if(str1[i] == str2[i]) {
+            matchingChars += 8; // all 8 bits correct
+        } else {
+            matchingChars += 8 - __builtin_popcount(str1[i] ^ str2[i]);
+            //break;
+        }
+    }
+
+    uintptr_t pos = ((calleeCallee << 1) ^ callee) % _HF_PERF_BITMAP_SIZE_16M;
+    uint8_t prev = ATOMIC_GET(feedback->bbMapStrCmp[pos]);
+    if (prev < matchingChars) {
+        ATOMIC_SET(feedback->bbMapStrCmp[pos], matchingChars);
+        ATOMIC_POST_ADD(feedback->pidFeedbackStrCmp[my_thread_no], matchingChars - prev);
+    }
 }
 
 /*
@@ -386,6 +409,11 @@ HF_REQUIRE_SSE42_POPCNT void __sanitizer_cov_trace_pc_guard(uint32_t* guard) {
     if (prev == false) {
         ATOMIC_PRE_INC_RELAXED(feedback->pidFeedbackEdge[my_thread_no]);
     }
+}
+
+HF_REQUIRE_SSE42_POPCNT void hfuzz_trace_edge(uintptr_t pc, uintptr_t prev_pc) {
+    uint32_t guard = (pc ^ (prev_pc << 4)) % _HF_PC_GUARD_MAX;
+    __sanitizer_cov_trace_pc_guard(&guard);
 }
 
 bool instrumentUpdateCmpMap(uintptr_t addr, uint32_t v) {

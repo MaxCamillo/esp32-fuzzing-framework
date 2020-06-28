@@ -29,7 +29,7 @@ HFUZZ_CC_SRCS := hfuzz_cc/hfuzz-cc.c
 COMMON_CFLAGS := -std=c11 -I/usr/local/include -D_GNU_SOURCE -Wall -Wextra -Werror -Wno-format-truncation -Wno-override-init -I.
 COMMON_LDFLAGS := -pthread -lm
 COMMON_SRCS := $(sort $(wildcard *.c))
-CFLAGS ?= -O3 -mtune=native -funroll-loops
+CFLAGS ?=#-O3 -mtune=native -funroll-loops
 LDFLAGS ?=
 LIBS_CFLAGS ?= -fPIC -fno-stack-protector -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0  # fortify-source intercepts some functions, so we disable it for libraries
 GREP_COLOR ?=
@@ -38,6 +38,8 @@ BUILD_OSSFUZZ_STATIC ?= false # for https://github.com/google/oss-fuzz
 OS ?= $(shell uname -s)
 MARCH ?= $(shell uname -m)
 KERNEL ?= $(shell uname -r)
+
+DEBUG = 1
 
 ifeq ($(OS)$(findstring Microsoft,$(KERNEL)),Linux) # matches Linux but excludes WSL (Windows Subsystem for Linux)
     ARCH := LINUX

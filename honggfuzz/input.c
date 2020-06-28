@@ -345,7 +345,7 @@ bool input_writeCovFile(const char* dir, const uint8_t* data, size_t len) {
 
 /* true if item1 is bigger than item2 */
 static bool input_cmpCov(struct dynfile_t* item1, struct dynfile_t* item2) {
-    for (size_t j = 0; j < ARRAYSIZE(item1->cov); j++) {
+    for (int j = ARRAYSIZE(item1->cov) -1; j >= 0 ; j--) {
         if (item1->cov[j] > item2->cov[j]) {
             return true;
         }
@@ -361,7 +361,7 @@ static bool input_cmpCov(struct dynfile_t* item1, struct dynfile_t* item2) {
     for ((var) = TAILQ_FIRST((head)); (var); (var) = TAILQ_NEXT((var), field))
 
 void input_addDynamicInput(
-    honggfuzz_t* hfuzz, const uint8_t* data, size_t len, uint64_t cov[4], const char* path) {
+    honggfuzz_t* hfuzz, const uint8_t* data, size_t len, uint64_t cov[5], const char* path) {
     ATOMIC_SET(hfuzz->timing.lastCovUpdate, time(NULL));
 
     struct dynfile_t* dynfile = (struct dynfile_t*)util_Malloc(sizeof(struct dynfile_t) + len);
@@ -558,9 +558,10 @@ bool input_prepareDynamicFileForMinimization(run_t* run) {
     snprintf(
         run->origFileName, sizeof(run->origFileName), "%s", run->global->io.dynfileqCurrent->path);
 
-    LOG_D("Cov: %" PRIu64 "/%" PRIu64 "/%" PRIu64 "/%" PRIu64,
+    LOG_D("Cov: %" PRIu64 "/%" PRIu64 "/%" PRIu64 "/%" PRIu64 "/%" PRIu64,
         run->global->io.dynfileqCurrent->cov[0], run->global->io.dynfileqCurrent->cov[1],
-        run->global->io.dynfileqCurrent->cov[2], run->global->io.dynfileqCurrent->cov[3]);
+        run->global->io.dynfileqCurrent->cov[2], run->global->io.dynfileqCurrent->cov[3],
+        run->global->io.dynfileqCurrent->cov[4]);
 
     return true;
 }
