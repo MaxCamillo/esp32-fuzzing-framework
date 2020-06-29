@@ -31,4 +31,8 @@
 *.out
 *.app
 
+# Build folders
 */build/
+
+# Coverage files
+*.cov

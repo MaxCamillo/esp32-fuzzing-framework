@@ -42,8 +42,8 @@ char * hfuzz_dump_file = 0;
 char * hfuzz_regs_file = 0;
 
 //http request ending
-const char *http_crlf = " HTTP/1.1\r\nHost: 123.0.0.1\r\n\r\n";
-//const char *http_crlf = "\x20\r\n";
+//const char *http_crlf = " HTTP/1.1\r\nHost: 123.0.0.1\r\n\r\n";
+const char *http_crlf = "\r\n";
 
 extern void HonggfuzzFetchData(const uint8_t** buf_ptr, size_t* len_ptr);
 extern void hfuzzInstrumentInit(void);
@@ -331,13 +331,20 @@ extern void hfuzz_trace_cmp8(uintptr_t pc, uint64_t Arg1, uint64_t Arg2);
 void HELPER(hfuzz_qemu_trace_cmp_i64)(
         uint64_t cur_loc, uint64_t arg1, uint64_t arg2
     ) {
-  hfuzz_trace_cmp8(cur_loc, arg1, arg2);
+    if (cur_loc > hfuzz_qemu_end_code || cur_loc < hfuzz_qemu_start_code) {
+        return;
+    }
+    hfuzz_trace_cmp4(cur_loc, arg1, arg2);
+    hfuzz_trace_cmp8(cur_loc, arg1, arg2);
 }
 
 void HELPER(hfuzz_qemu_trace_cmp_i32)(
         uint32_t cur_loc, uint32_t arg1, uint32_t arg2
     ) {
-  hfuzz_trace_cmp4(cur_loc, arg1, arg2);
+    if (cur_loc > hfuzz_qemu_end_code || cur_loc < hfuzz_qemu_start_code) {
+        return;
+    }
+    hfuzz_trace_cmp4(cur_loc, arg1, arg2);
 }
 
 QemuOptsList qemu_fuzz_opts = {

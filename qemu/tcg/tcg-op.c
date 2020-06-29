@@ -240,7 +240,9 @@ void tcg_gen_brcond_i32(TCGCond cond, TCGv_i32 arg1, TCGv_i32 arg2, TCGLabel *l)
     if (cond == TCG_COND_ALWAYS) {
         tcg_gen_br(l);
     } else if (cond != TCG_COND_NEVER) {
-        hfuzz_qemu_gen_trace_cmp_tl(arg1, arg2); 
+        if(cond == TCG_COND_EQ || cond == TCG_COND_NE) {
+            hfuzz_qemu_gen_trace_cmp_tl(arg1, arg2);
+        }
         l->refs++;
         tcg_gen_op4ii_i32(INDEX_op_brcond_i32, arg1, arg2, cond, label_arg(l));
     }
