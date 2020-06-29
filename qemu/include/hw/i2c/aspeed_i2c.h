@@ -32,7 +32,6 @@
     OBJECT_CHECK(AspeedI2CState, (obj), TYPE_ASPEED_I2C)
 
 #define ASPEED_I2C_NR_BUSSES 16
-#define ASPEED_I2C_MAX_POOL_SIZE 0x800
 
 struct AspeedI2CState;
 
@@ -51,9 +50,6 @@ typedef struct AspeedI2CBus {
     uint32_t intr_status;
     uint32_t cmd;
     uint32_t buf;
-    uint32_t pool_ctrl;
-    uint32_t dma_addr;
-    uint32_t dma_len;
 } AspeedI2CBus;
 
 typedef struct AspeedI2CState {
@@ -63,13 +59,8 @@ typedef struct AspeedI2CState {
     qemu_irq irq;
 
     uint32_t intr_status;
-    uint32_t ctrl_global;
-    MemoryRegion pool_iomem;
-    uint8_t pool[ASPEED_I2C_MAX_POOL_SIZE];
 
     AspeedI2CBus busses[ASPEED_I2C_NR_BUSSES];
-    MemoryRegion *dram_mr;
-    AddressSpace dram_as;
 } AspeedI2CState;
 
 #define ASPEED_I2C_CLASS(klass) \
@@ -84,13 +75,6 @@ typedef struct AspeedI2CClass {
     uint8_t reg_size;
     uint8_t gap;
     qemu_irq (*bus_get_irq)(AspeedI2CBus *);
-
-    uint64_t pool_size;
-    hwaddr pool_base;
-    uint8_t *(*bus_pool_base)(AspeedI2CBus *);
-    bool check_sram;
-    bool has_dma;
-
 } AspeedI2CClass;
 
 I2CBus *aspeed_i2c_get_bus(DeviceState *dev, int busnr);

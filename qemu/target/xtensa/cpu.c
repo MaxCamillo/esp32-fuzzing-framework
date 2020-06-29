@@ -67,14 +67,14 @@ bool xtensa_abi_call0(void)
 }
 #endif
 
-static void xtensa_cpu_reset(DeviceState *dev)
+/* CPUClass::reset() */
+static void xtensa_cpu_reset(CPUState *s)
 {
-    CPUState *s = CPU(dev);
     XtensaCPU *cpu = XTENSA_CPU(s);
     XtensaCPUClass *xcc = XTENSA_CPU_GET_CLASS(cpu);
     CPUXtensaState *env = &cpu->env;
 
-    xcc->parent_reset(dev);
+    xcc->parent_reset(s);
 
     env->exception_taken = 0;
     env->pc = env->config->exception_vector[EXC_RESET0 + env->static_vectors];
@@ -184,7 +184,8 @@ static void xtensa_cpu_class_init(ObjectClass *oc, void *data)
     device_class_set_parent_realize(dc, xtensa_cpu_realizefn,
                                     &xcc->parent_realize);
 
-    device_class_set_parent_reset(dc, xtensa_cpu_reset, &xcc->parent_reset);
+    xcc->parent_reset = cc->reset;
+    cc->reset = xtensa_cpu_reset;
 
     cc->class_by_name = xtensa_cpu_class_by_name;
     cc->has_work = xtensa_cpu_has_work;

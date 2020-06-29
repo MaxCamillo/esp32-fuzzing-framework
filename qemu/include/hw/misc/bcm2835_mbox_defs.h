@@ -1,8 +1,6 @@
 /*
  * Raspberry Pi emulation (c) 2012 Gregory Estrade
- *
- * This work is licensed under the terms of the GNU GPL, version 2 or later.
- * See the COPYING file in the top-level directory.
+ * This code is licensed under the GNU GPLv2 and later.
  */
 
 #ifndef BCM2835_MBOX_DEFS_H

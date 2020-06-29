@@ -53,29 +53,6 @@ int handle_diag_288(CPUS390XState *env, uint64_t r1, uint64_t r3)
 #define DIAG_308_RC_NO_CONF         0x0102
 #define DIAG_308_RC_INVALID         0x0402
 
-#define DIAG308_RESET_MOD_CLR       0
-#define DIAG308_RESET_LOAD_NORM     1
-#define DIAG308_LOAD_CLEAR          3
-#define DIAG308_LOAD_NORMAL_DUMP    4
-#define DIAG308_SET                 5
-#define DIAG308_STORE               6
-
-static int diag308_parm_check(CPUS390XState *env, uint64_t r1, uint64_t addr,
-                              uintptr_t ra, bool write)
-{
-    if ((r1 & 1) || (addr & ~TARGET_PAGE_MASK)) {
-        s390_program_interrupt(env, PGM_SPECIFICATION, ra);
-        return -1;
-    }
-    if (!address_space_access_valid(&address_space_memory, addr,
-                                    sizeof(IplParameterBlock), write,
-                                    MEMTXATTRS_UNSPECIFIED)) {
-        s390_program_interrupt(env, PGM_ADDRESSING, ra);
-        return -1;
-    }
-    return 0;
-}
-
 void handle_diag_308(CPUS390XState *env, uint64_t r1, uint64_t r3, uintptr_t ra)
 {
     CPUState *cs = env_cpu(env);
@@ -88,24 +65,30 @@ void handle_diag_308(CPUS390XState *env, uint64_t r1, uint64_t r3, uintptr_t ra)
         return;
     }
 
-    if (subcode & ~0x0ffffULL) {
+    if ((subcode & ~0x0ffffULL) || (subcode > 6)) {
         s390_program_interrupt(env, PGM_SPECIFICATION, ra);
         return;
     }
 
     switch (subcode) {
-    case DIAG308_RESET_MOD_CLR:
+    case 0:
         s390_ipl_reset_request(cs, S390_RESET_MODIFIED_CLEAR);
         break;
-    case DIAG308_RESET_LOAD_NORM:
+    case 1:
         s390_ipl_reset_request(cs, S390_RESET_LOAD_NORMAL);
         break;
-    case DIAG308_LOAD_CLEAR:
-        /* Well we still lack the clearing bit... */
+    case 3:
         s390_ipl_reset_request(cs, S390_RESET_REIPL);
         break;
-    case DIAG308_SET:
-        if (diag308_parm_check(env, r1, addr, ra, false)) {
+    case 5:
+        if ((r1 & 1) || (addr & 0x0fffULL)) {
+            s390_program_interrupt(env, PGM_SPECIFICATION, ra);
+            return;
+        }
+        if (!address_space_access_valid(&address_space_memory, addr,
+                                        sizeof(IplParameterBlock), false,
+                                        MEMTXATTRS_UNSPECIFIED)) {
+            s390_program_interrupt(env, PGM_ADDRESSING, ra);
             return;
         }
         iplb = g_new0(IplParameterBlock, 1);
@@ -117,7 +100,7 @@ void handle_diag_308(CPUS390XState *env, uint64_t r1, uint64_t r3, uintptr_t ra)
 
         cpu_physical_memory_read(addr, iplb, be32_to_cpu(iplb->len));
 
-        if (!iplb_valid(iplb)) {
+        if (!iplb_valid_ccw(iplb) && !iplb_valid_fcp(iplb)) {
             env->regs[r1 + 1] = DIAG_308_RC_INVALID;
             goto out;
         }
@@ -127,8 +110,15 @@ void handle_diag_308(CPUS390XState *env, uint64_t r1, uint64_t r3, uintptr_t ra)
 out:
         g_free(iplb);
         return;
-    case DIAG308_STORE:
-        if (diag308_parm_check(env, r1, addr, ra, true)) {
+    case 6:
+        if ((r1 & 1) || (addr & 0x0fffULL)) {
+            s390_program_interrupt(env, PGM_SPECIFICATION, ra);
+            return;
+        }
+        if (!address_space_access_valid(&address_space_memory, addr,
+                                        sizeof(IplParameterBlock), true,
+                                        MEMTXATTRS_UNSPECIFIED)) {
+            s390_program_interrupt(env, PGM_ADDRESSING, ra);
             return;
         }
         iplb = s390_ipl_get_iplb();

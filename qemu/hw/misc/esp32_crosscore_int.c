@@ -72,7 +72,7 @@ static void esp32_crosscore_int_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = esp32_crosscore_int_realize;
-    device_class_set_props(dc, esp32_crosscore_int_properties);
+    dc->props = esp32_crosscore_int_properties;
 }
 
 static const TypeInfo esp32_crosscore_int_info = {

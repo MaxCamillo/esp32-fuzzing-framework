@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 #
 #  Copyright (c) 2017 Red Hat Inc
 #
@@ -23,6 +23,7 @@
 Run QEMU with all combinations of -machine and -device types,
 check for crashes and unexpected errors.
 """
+from __future__ import print_function
 
 import os
 import sys

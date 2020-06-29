@@ -11,7 +11,7 @@ variables:
 
 build-linux:
   stage: build
-  image: $CI_DOCKER_REGISTRY/qemu-build:1
+  image: $CI_DOCKER_REGISTRY/qemu-build
   tags:
     - build
     - internet
@@ -34,7 +34,7 @@ build-linux:
     - echo $ARCHIVE_NAME >${DIST_DIR}/archive_name_${CI_JOB_NAME}
 
 upload_to_http:
-  image: $CI_DOCKER_REGISTRY/qemu-build:1
+  image: $CI_DOCKER_REGISTRY/qemu-build
   stage: deploy
   tags:
     - deploy

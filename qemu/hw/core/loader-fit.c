@@ -178,12 +178,11 @@ static int fit_load_fdt(const struct fit_loader *ldr, const void *itb,
                         int cfg, void *opaque, const void *match_data,
                         hwaddr kernel_end, Error **errp)
 {
-    Error *err = NULL;
     const char *name;
     const void *data;
     const void *load_data;
     hwaddr load_addr;
-    int img_off;
+    int img_off, err;
     size_t sz;
     int ret;
 
@@ -198,13 +197,13 @@ static int fit_load_fdt(const struct fit_loader *ldr, const void *itb,
         return -EINVAL;
     }
 
-    ret = fit_image_addr(itb, img_off, "load", &load_addr, &err);
-    if (ret == -ENOENT) {
+    err = fit_image_addr(itb, img_off, "load", &load_addr, errp);
+    if (err == -ENOENT) {
         load_addr = ROUND_UP(kernel_end, 64 * KiB) + (10 * MiB);
-        error_free(err);
-    } else if (ret) {
-        error_propagate_prepend(errp, err,
-                                "unable to read FDT load address from FIT: ");
+        error_free(*errp);
+    } else if (err) {
+        error_prepend(errp, "unable to read FDT load address from FIT: ");
+        ret = err;
         goto out;
     }
 

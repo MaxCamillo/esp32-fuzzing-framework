@@ -14,6 +14,7 @@
 #include "qemu/main-loop.h"
 #include "hw/ptimer.h"
 
+#include "libqtest.h"
 #include "ptimer-test.h"
 
 static bool triggered;

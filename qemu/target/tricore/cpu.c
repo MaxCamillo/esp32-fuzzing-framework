@@ -53,14 +53,13 @@ static void tricore_cpu_synchronize_from_tb(CPUState *cs,
     env->PC = tb->pc;
 }
 
-static void tricore_cpu_reset(DeviceState *dev)
+static void tricore_cpu_reset(CPUState *s)
 {
-    CPUState *s = CPU(dev);
     TriCoreCPU *cpu = TRICORE_CPU(s);
     TriCoreCPUClass *tcc = TRICORE_CPU_GET_CLASS(cpu);
     CPUTriCoreState *env = &cpu->env;
 
-    tcc->parent_reset(dev);
+    tcc->parent_reset(s);
 
     cpu_state_reset(env);
 }
@@ -154,7 +153,8 @@ static void tricore_cpu_class_init(ObjectClass *c, void *data)
     device_class_set_parent_realize(dc, tricore_cpu_realizefn,
                                     &mcc->parent_realize);
 
-    device_class_set_parent_reset(dc, tricore_cpu_reset, &mcc->parent_reset);
+    mcc->parent_reset = cc->reset;
+    cc->reset = tricore_cpu_reset;
     cc->class_by_name = tricore_cpu_class_by_name;
     cc->has_work = tricore_cpu_has_work;
 

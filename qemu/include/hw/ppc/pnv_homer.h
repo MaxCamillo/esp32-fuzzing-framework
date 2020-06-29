@@ -33,7 +33,6 @@ typedef struct PnvHomer {
     DeviceState parent;
 
     struct PnvChip *chip;
-    MemoryRegion pba_regs;
     MemoryRegion regs;
 } PnvHomer;
 
@@ -45,8 +44,6 @@ typedef struct PnvHomer {
 typedef struct PnvHomerClass {
     DeviceClass parent_class;
 
-    int pba_size;
-    const MemoryRegionOps *pba_ops;
     int homer_size;
     const MemoryRegionOps *homer_ops;
 

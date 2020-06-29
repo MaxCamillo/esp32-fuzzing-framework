@@ -28,7 +28,6 @@
 
 #include "qapi/qapi-types-job.h"
 #include "qemu/queue.h"
-#include "qemu/progress_meter.h"
 #include "qemu/coroutine.h"
 #include "block/aio.h"
 
@@ -118,7 +117,15 @@ typedef struct Job {
     /** True if this job should automatically dismiss itself */
     bool auto_dismiss;
 
-    ProgressMeter progress;
+    /**
+     * Current progress. The unit is arbitrary as long as the ratio between
+     * progress_current and progress_total represents the estimated percentage
+     * of work already done.
+     */
+    int64_t progress_current;
+
+    /** Estimated progress_current value at the completion of the job */
+    int64_t progress_total;
 
     /**
      * Return code from @run and/or @prepare callback(s).

@@ -265,6 +265,8 @@ static void hda_audio_input_cb(void *opaque, int avail)
 
     int64_t to_transfer = MIN(B_SIZE - (wpos - rpos), avail);
 
+    hda_timer_sync_adjust(st, -((wpos - rpos) + to_transfer - (B_SIZE >> 1)));
+
     while (to_transfer) {
         uint32_t start = (uint32_t) (wpos & B_MASK);
         uint32_t chunk = (uint32_t) MIN(B_SIZE - start, to_transfer);
@@ -276,8 +278,6 @@ static void hda_audio_input_cb(void *opaque, int avail)
             break;
         }
     }
-
-    hda_timer_sync_adjust(st, -((wpos - rpos) - (B_SIZE >> 1)));
 }
 
 static void hda_audio_output_timer(void *opaque)
@@ -338,6 +338,8 @@ static void hda_audio_output_cb(void *opaque, int avail)
         return;
     }
 
+    hda_timer_sync_adjust(st, (wpos - rpos) - to_transfer - (B_SIZE >> 1));
+
     while (to_transfer) {
         uint32_t start = (uint32_t) (rpos & B_MASK);
         uint32_t chunk = (uint32_t) MIN(B_SIZE - start, to_transfer);
@@ -349,8 +351,6 @@ static void hda_audio_output_cb(void *opaque, int avail)
             break;
         }
     }
-
-    hda_timer_sync_adjust(st, (wpos - rpos) - (B_SIZE >> 1));
 }
 
 static void hda_audio_compat_input_cb(void *opaque, int avail)
@@ -892,7 +892,7 @@ static void hda_audio_base_class_init(ObjectClass *klass, void *data)
     set_bit(DEVICE_CATEGORY_SOUND, dc->categories);
     dc->reset = hda_audio_reset;
     dc->vmsd = &vmstate_hda_audio;
-    device_class_set_props(dc, hda_audio_properties);
+    dc->props = hda_audio_properties;
 }
 
 static const TypeInfo hda_audio_info = {

@@ -947,7 +947,7 @@ static int local_link(FsContext *ctx, V9fsPath *oldpath,
     if (ctx->export_flags & V9FS_SM_MAPPED_FILE &&
         local_is_mapped_file_metadata(ctx, name)) {
         errno = EINVAL;
-        goto out;
+        return -1;
     }
 
     odirfd = local_opendir_nofollow(ctx, odirpath);
@@ -1076,7 +1076,7 @@ out:
 static int local_unlinkat_common(FsContext *ctx, int dirfd, const char *name,
                                  int flags)
 {
-    int ret;
+    int ret = -1;
 
     if (ctx->export_flags & V9FS_SM_MAPPED_FILE) {
         int map_dirfd;
@@ -1094,12 +1094,12 @@ static int local_unlinkat_common(FsContext *ctx, int dirfd, const char *name,
 
             fd = openat_dir(dirfd, name);
             if (fd == -1) {
-                return -1;
+                goto err_out;
             }
             ret = unlinkat(fd, VIRTFS_META_DIR, AT_REMOVEDIR);
             close_preserve_errno(fd);
             if (ret < 0 && errno != ENOENT) {
-                return -1;
+                goto err_out;
             }
         }
         map_dirfd = openat_dir(dirfd, VIRTFS_META_DIR);
@@ -1107,14 +1107,16 @@ static int local_unlinkat_common(FsContext *ctx, int dirfd, const char *name,
             ret = unlinkat(map_dirfd, name, 0);
             close_preserve_errno(map_dirfd);
             if (ret < 0 && errno != ENOENT) {
-                return -1;
+                goto err_out;
             }
         } else if (errno != ENOENT) {
-            return -1;
+            goto err_out;
         }
     }
 
-    return unlinkat(dirfd, name, flags);
+    ret = unlinkat(dirfd, name, flags);
+err_out:
+    return ret;
 }
 
 static int local_remove(FsContext *ctx, const char *path)
@@ -1471,7 +1473,7 @@ static void local_cleanup(FsContext *ctx)
     g_free(data);
 }
 
-static void error_append_security_model_hint(Error *const *errp)
+static void error_append_security_model_hint(Error **errp)
 {
     error_append_hint(errp, "Valid options are: security_model="
                       "[passthrough|mapped-xattr|mapped-file|none]\n");

@@ -71,7 +71,7 @@ typedef struct X86CPUClass {
 
     DeviceRealize parent_realize;
     DeviceUnrealize parent_unrealize;
-    DeviceReset parent_reset;
+    void (*parent_reset)(CPUState *cpu);
 } X86CPUClass;
 
 typedef struct X86CPU X86CPU;

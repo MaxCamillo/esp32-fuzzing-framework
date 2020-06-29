@@ -25,7 +25,6 @@
 #include "hw/char/serial.h"
 #include "sysemu/qtest.h"
 #include "sysemu/sysemu.h"
-#include "qemu/cutils.h"
 
 /* Memory map for Kzm Emulation Baseboard:
  * 0x00000000-0x7fffffff See i.MX31 SOC for support
@@ -52,6 +51,7 @@
 
 typedef struct IMX31KZM {
     FslIMX31State soc;
+    MemoryRegion ram;
     MemoryRegion ram_alias;
 } IMX31KZM;
 
@@ -78,14 +78,16 @@ static void kzm_init(MachineState *machine)
 
     /* Check the amount of memory is compatible with the SOC */
     if (machine->ram_size > (FSL_IMX31_SDRAM0_SIZE + FSL_IMX31_SDRAM1_SIZE)) {
-        char *sz = size_to_str(FSL_IMX31_SDRAM0_SIZE + FSL_IMX31_SDRAM1_SIZE);
-        error_report("RAM size more than %s is not supported", sz);
-        g_free(sz);
-        exit(EXIT_FAILURE);
+        warn_report("RAM size " RAM_ADDR_FMT " above max supported, "
+                    "reduced to %x", machine->ram_size,
+                    FSL_IMX31_SDRAM0_SIZE + FSL_IMX31_SDRAM1_SIZE);
+        machine->ram_size = FSL_IMX31_SDRAM0_SIZE + FSL_IMX31_SDRAM1_SIZE;
     }
 
+    memory_region_allocate_system_memory(&s->ram, NULL, "kzm.ram",
+                                         machine->ram_size);
     memory_region_add_subregion(get_system_memory(), FSL_IMX31_SDRAM0_ADDR,
-                                machine->ram);
+                                &s->ram);
 
     /* initialize the alias memory if any */
     for (i = 0, ram_size = machine->ram_size, alias_offset = 0;
@@ -105,8 +107,7 @@ static void kzm_init(MachineState *machine)
 
         if (size < ram[i].size) {
             memory_region_init_alias(&s->ram_alias, NULL, "ram.alias",
-                                     machine->ram,
-                                     alias_offset, ram[i].size - size);
+                                     &s->ram, alias_offset, ram[i].size - size);
             memory_region_add_subregion(get_system_memory(),
                                         ram[i].addr + size, &s->ram_alias);
         }
@@ -138,7 +139,6 @@ static void kzm_machine_init(MachineClass *mc)
     mc->desc = "ARM KZM Emulation Baseboard (ARM1136)";
     mc->init = kzm_init;
     mc->ignore_memory_transaction_failures = true;
-    mc->default_ram_id = "kzm.ram";
 }
 
 DEFINE_MACHINE("kzm", kzm_machine_init)

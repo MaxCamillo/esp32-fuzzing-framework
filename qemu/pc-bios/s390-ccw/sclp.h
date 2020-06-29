@@ -95,7 +95,7 @@ typedef struct EventBufferHeader {
 typedef struct WriteEventData {
     SCCBHeader h;
     EventBufferHeader ebh;
-    char data[];
+    char data[0];
 } __attribute__((packed)) WriteEventData;
 
 typedef struct ReadEventData {

@@ -423,7 +423,7 @@ static void etsec_class_init(ObjectClass *klass, void *data)
 
     dc->realize = etsec_realize;
     dc->reset = etsec_reset;
-    device_class_set_props(dc, etsec_properties);
+    dc->props = etsec_properties;
     /* Supported by ppce500 machine */
     dc->user_creatable = true;
 }

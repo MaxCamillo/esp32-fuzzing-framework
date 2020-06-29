@@ -38,7 +38,7 @@
 #include "hw/pci/pci_ids.h"
 #include "hw/usb.h"
 #include "net/net.h"
-#include "hw/ide/pci.h"
+#include "hw/ide.h"
 #include "hw/irq.h"
 #include "sysemu/kvm.h"
 #include "hw/kvm/clock.h"
@@ -60,7 +60,6 @@
 #include "migration/global_state.h"
 #include "migration/misc.h"
 #include "sysemu/numa.h"
-#include "hw/mem/nvdimm.h"
 
 #define MAX_IDE_BUS 2
 
@@ -85,6 +84,7 @@ static void pc_init1(MachineState *machine,
     int piix3_devfn = -1;
     qemu_irq smi_irq;
     GSIState *gsi_state;
+    DriveInfo *hd[MAX_IDE_BUS * MAX_IDE_DEVS];
     BusState *idebus[MAX_IDE_BUS];
     ISADevice *rtc_state;
     MemoryRegion *ram_memory;
@@ -238,22 +238,21 @@ static void pc_init1(MachineState *machine,
 
     pc_nic_init(pcmc, isa_bus, pci_bus);
 
+    ide_drive_get(hd, ARRAY_SIZE(hd));
     if (pcmc->pci_enabled) {
         PCIDevice *dev;
-
-        dev = pci_create_simple(pci_bus, piix3_devfn + 1,
-                                xen_enabled() ? "piix3-ide-xen" : "piix3-ide");
-        pci_ide_create_devs(dev);
+        if (xen_enabled()) {
+            dev = pci_piix3_xen_ide_init(pci_bus, hd, piix3_devfn + 1);
+        } else {
+            dev = pci_piix3_ide_init(pci_bus, hd, piix3_devfn + 1);
+        }
         idebus[0] = qdev_get_child_bus(&dev->qdev, "ide.0");
         idebus[1] = qdev_get_child_bus(&dev->qdev, "ide.1");
         pc_cmos_init(pcms, idebus[0], idebus[1], rtc_state);
     }
 #ifdef CONFIG_IDE_ISA
-    else {
-        DriveInfo *hd[MAX_IDE_BUS * MAX_IDE_DEVS];
+else {
         int i;
-
-        ide_drive_get(hd, ARRAY_SIZE(hd));
         for (i = 0; i < MAX_IDE_BUS; i++) {
             ISADevice *dev;
             char busname[] = "ide.0";
@@ -275,14 +274,14 @@ static void pc_init1(MachineState *machine,
         pci_create_simple(pci_bus, piix3_devfn + 2, "piix3-usb-uhci");
     }
 
-    if (pcmc->pci_enabled && x86_machine_is_acpi_enabled(X86_MACHINE(pcms))) {
+    if (pcmc->pci_enabled && acpi_enabled) {
         DeviceState *piix4_pm;
 
         smi_irq = qemu_allocate_irq(pc_acpi_smi_interrupt, first_cpu, 0);
         /* TODO: Populate SPD eeprom data.  */
         pcms->smbus = piix4_pm_init(pci_bus, piix3_devfn + 3, 0xb100,
                                     x86ms->gsi[9], smi_irq,
-                                    x86_machine_is_smm_enabled(x86ms),
+                                    pc_machine_is_smm_enabled(pcms),
                                     &piix4_pm);
         smbus_eeprom_init(pcms->smbus, 8, NULL, 0);
 
@@ -310,9 +309,9 @@ static void pc_init1(MachineState *machine,
 
 static void pc_compat_2_3_fn(MachineState *machine)
 {
-    X86MachineState *x86ms = X86_MACHINE(machine);
+    PCMachineState *pcms = PC_MACHINE(machine);
     if (kvm_enabled()) {
-        x86ms->smm = ON_OFF_AUTO_OFF;
+        pcms->smm = ON_OFF_AUTO_OFF;
     }
 }
 
@@ -358,11 +357,17 @@ static void pc_compat_1_3(MachineState *machine)
     pc_compat_1_4_fn(machine);
 }
 
-/* PC compat function for pc-1.0 to pc-1.2 */
+/* PC compat function for pc-0.14 to pc-1.2 */
 static void pc_compat_1_2(MachineState *machine)
 {
     pc_compat_1_3(machine);
     x86_cpu_change_kvm_default("kvm-pv-eoi", NULL);
+}
+
+/* PC compat function for pc-0.12 and pc-0.13 */
+static void pc_compat_0_13(MachineState *machine)
+{
+    pc_compat_1_2(machine);
 }
 
 static void pc_init_isa(MachineState *machine)
@@ -419,25 +424,13 @@ static void pc_i440fx_machine_options(MachineClass *m)
     machine_class_allow_dynamic_sysbus_dev(m, TYPE_RAMFB_DEVICE);
 }
 
-static void pc_i440fx_5_0_machine_options(MachineClass *m)
+static void pc_i440fx_4_2_machine_options(MachineClass *m)
 {
     PCMachineClass *pcmc = PC_MACHINE_CLASS(m);
     pc_i440fx_machine_options(m);
     m->alias = "pc";
-    m->is_default = true;
+    m->is_default = 1;
     pcmc->default_cpu_version = 1;
-}
-
-DEFINE_I440FX_MACHINE(v5_0, "pc-i440fx-5.0", NULL,
-                      pc_i440fx_5_0_machine_options);
-
-static void pc_i440fx_4_2_machine_options(MachineClass *m)
-{
-    pc_i440fx_5_0_machine_options(m);
-    m->alias = NULL;
-    m->is_default = false;
-    compat_props_add(m->compat_props, hw_compat_4_2, hw_compat_4_2_len);
-    compat_props_add(m->compat_props, pc_compat_4_2, pc_compat_4_2_len);
 }
 
 DEFINE_I440FX_MACHINE(v4_2, "pc-i440fx-4.2", NULL,
@@ -447,7 +440,7 @@ static void pc_i440fx_4_1_machine_options(MachineClass *m)
 {
     pc_i440fx_4_2_machine_options(m);
     m->alias = NULL;
-    m->is_default = false;
+    m->is_default = 0;
     compat_props_add(m->compat_props, hw_compat_4_1, hw_compat_4_1_len);
     compat_props_add(m->compat_props, pc_compat_4_1, pc_compat_4_1_len);
 }
@@ -460,7 +453,7 @@ static void pc_i440fx_4_0_machine_options(MachineClass *m)
     PCMachineClass *pcmc = PC_MACHINE_CLASS(m);
     pc_i440fx_4_1_machine_options(m);
     m->alias = NULL;
-    m->is_default = false;
+    m->is_default = 0;
     pcmc->default_cpu_version = CPU_VERSION_LEGACY;
     compat_props_add(m->compat_props, hw_compat_4_0, hw_compat_4_0_len);
     compat_props_add(m->compat_props, pc_compat_4_0, pc_compat_4_0_len);
@@ -474,7 +467,7 @@ static void pc_i440fx_3_1_machine_options(MachineClass *m)
     PCMachineClass *pcmc = PC_MACHINE_CLASS(m);
 
     pc_i440fx_4_0_machine_options(m);
-    m->is_default = false;
+    m->is_default = 0;
     pcmc->do_not_add_smb_acpi = true;
     m->smbus_no_migration_support = true;
     m->alias = NULL;
@@ -739,7 +732,6 @@ static void pc_i440fx_1_3_machine_options(MachineClass *m)
 
     pc_i440fx_1_4_machine_options(m);
     m->hw_version = "1.3.0";
-    m->deprecation_reason = "use a newer machine type instead";
     x86mc->compat_apic_id_mode = true;
     compat_props_add(m->compat_props, compat, G_N_ELEMENTS(compat));
 }
@@ -807,6 +799,82 @@ static void pc_i440fx_1_0_machine_options(MachineClass *m)
 DEFINE_I440FX_MACHINE(v1_0, "pc-1.0", pc_compat_1_2,
                       pc_i440fx_1_0_machine_options);
 
+
+static void pc_i440fx_0_15_machine_options(MachineClass *m)
+{
+    static GlobalProperty compat[] = {
+        PC_CPU_MODEL_IDS("0.15")
+    };
+
+    pc_i440fx_1_0_machine_options(m);
+    m->hw_version = "0.15";
+    m->deprecation_reason = "use a newer machine type instead";
+    compat_props_add(m->compat_props, compat, G_N_ELEMENTS(compat));
+}
+
+DEFINE_I440FX_MACHINE(v0_15, "pc-0.15", pc_compat_1_2,
+                      pc_i440fx_0_15_machine_options);
+
+
+static void pc_i440fx_0_14_machine_options(MachineClass *m)
+{
+    static GlobalProperty compat[] = {
+        PC_CPU_MODEL_IDS("0.14")
+        { "virtio-blk-pci", "event_idx", "off" },
+        { "virtio-serial-pci", "event_idx", "off" },
+        { "virtio-net-pci", "event_idx", "off" },
+        { "virtio-balloon-pci", "event_idx", "off" },
+        { "qxl", "revision", "2" },
+        { "qxl-vga", "revision", "2" },
+    };
+
+    pc_i440fx_0_15_machine_options(m);
+    m->hw_version = "0.14";
+    compat_props_add(m->compat_props, compat, G_N_ELEMENTS(compat));
+}
+
+DEFINE_I440FX_MACHINE(v0_14, "pc-0.14", pc_compat_1_2,
+                      pc_i440fx_0_14_machine_options);
+
+static void pc_i440fx_0_13_machine_options(MachineClass *m)
+{
+    PCMachineClass *pcmc = PC_MACHINE_CLASS(m);
+    static GlobalProperty compat[] = {
+        PC_CPU_MODEL_IDS("0.13")
+        { TYPE_PCI_DEVICE, "command_serr_enable", "off" },
+        { "AC97", "use_broken_id", "1" },
+        { "virtio-9p-pci", "vectors", "0" },
+        { "VGA", "rombar", "0" },
+        { "vmware-svga", "rombar", "0" },
+    };
+
+    pc_i440fx_0_14_machine_options(m);
+    m->hw_version = "0.13";
+    compat_props_add(m->compat_props, compat, G_N_ELEMENTS(compat));
+    pcmc->kvmclock_enabled = false;
+}
+
+DEFINE_I440FX_MACHINE(v0_13, "pc-0.13", pc_compat_0_13,
+                      pc_i440fx_0_13_machine_options);
+
+static void pc_i440fx_0_12_machine_options(MachineClass *m)
+{
+    static GlobalProperty compat[] = {
+        PC_CPU_MODEL_IDS("0.12")
+        { "virtio-serial-pci", "max_ports", "1" },
+        { "virtio-serial-pci", "vectors", "0" },
+        { "usb-mouse", "serial", "1" },
+        { "usb-tablet", "serial", "1" },
+        { "usb-kbd", "serial", "1" },
+    };
+
+    pc_i440fx_0_13_machine_options(m);
+    m->hw_version = "0.12";
+    compat_props_add(m->compat_props, compat, G_N_ELEMENTS(compat));
+}
+
+DEFINE_I440FX_MACHINE(v0_12, "pc-0.12", pc_compat_0_13,
+                      pc_i440fx_0_12_machine_options);
 
 typedef struct {
     uint16_t gpu_device_id;
@@ -948,26 +1016,13 @@ DEFINE_PC_MACHINE(isapc, "isapc", pc_init_isa,
 
 
 #ifdef CONFIG_XEN
-static void xenfv_4_2_machine_options(MachineClass *m)
+static void xenfv_machine_options(MachineClass *m)
 {
-    pc_i440fx_4_2_machine_options(m);
     m->desc = "Xen Fully-virtualized PC";
     m->max_cpus = HVM_MAX_VCPUS;
     m->default_machine_opts = "accel=xen";
 }
 
-DEFINE_PC_MACHINE(xenfv_4_2, "xenfv-4.2", pc_xen_hvm_init,
-                  xenfv_4_2_machine_options);
-
-static void xenfv_3_1_machine_options(MachineClass *m)
-{
-    pc_i440fx_3_1_machine_options(m);
-    m->desc = "Xen Fully-virtualized PC";
-    m->alias = "xenfv";
-    m->max_cpus = HVM_MAX_VCPUS;
-    m->default_machine_opts = "accel=xen";
-}
-
-DEFINE_PC_MACHINE(xenfv, "xenfv-3.1", pc_xen_hvm_init,
-                  xenfv_3_1_machine_options);
+DEFINE_PC_MACHINE(xenfv, "xenfv", pc_xen_hvm_init,
+                  xenfv_machine_options);
 #endif

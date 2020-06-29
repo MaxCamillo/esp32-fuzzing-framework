@@ -19,7 +19,6 @@
 
 #include "qemu/osdep.h"
 #include "qemu/units.h"
-#include "qemu/cutils.h"
 #include "qemu/error-report.h"
 #include "cpu.h"
 #include "hw/sysbus.h"
@@ -76,28 +75,22 @@ static void main_cpu_reset(void *opaque)
 
 static void lm32_evr_init(MachineState *machine)
 {
-    MachineClass *mc = MACHINE_GET_CLASS(machine);
     const char *kernel_filename = machine->kernel_filename;
     LM32CPU *cpu;
     CPULM32State *env;
     DriveInfo *dinfo;
     MemoryRegion *address_space_mem =  get_system_memory();
+    MemoryRegion *phys_ram = g_new(MemoryRegion, 1);
     qemu_irq irq[32];
     ResetInfo *reset_info;
     int i;
-
-    if (machine->ram_size != mc->default_ram_size) {
-        char *sz = size_to_str(mc->default_ram_size);
-        error_report("Invalid RAM size, should be %s", sz);
-        g_free(sz);
-        exit(EXIT_FAILURE);
-    }
 
     /* memory map */
     hwaddr flash_base  = 0x04000000;
     size_t flash_sector_size       = 256 * KiB;
     size_t flash_size              = 32 * MiB;
     hwaddr ram_base    = 0x08000000;
+    size_t ram_size                = 64 * MiB;
     hwaddr timer0_base = 0x80002000;
     hwaddr uart0_base  = 0x80006000;
     hwaddr timer1_base = 0x8000a000;
@@ -114,7 +107,9 @@ static void lm32_evr_init(MachineState *machine)
 
     reset_info->flash_base = flash_base;
 
-    memory_region_add_subregion(address_space_mem, ram_base, machine->ram);
+    memory_region_allocate_system_memory(phys_ram, NULL, "lm32_evr.sdram",
+                                         ram_size);
+    memory_region_add_subregion(address_space_mem, ram_base, phys_ram);
 
     dinfo = drive_get(IF_PFLASH, 0, 0);
     /* Spansion S29NS128P */
@@ -143,13 +138,13 @@ static void lm32_evr_init(MachineState *machine)
         int kernel_size;
 
         kernel_size = load_elf(kernel_filename, NULL, NULL, NULL,
-                               &entry, NULL, NULL, NULL,
+                               &entry, NULL, NULL,
                                1, EM_LATTICEMICO32, 0, 0);
         reset_info->bootstrap_pc = entry;
 
         if (kernel_size < 0) {
             kernel_size = load_image_targphys(kernel_filename, ram_base,
-                                              machine->ram_size);
+                                              ram_size);
             reset_info->bootstrap_pc = ram_base;
         }
 
@@ -164,7 +159,6 @@ static void lm32_evr_init(MachineState *machine)
 
 static void lm32_uclinux_init(MachineState *machine)
 {
-    MachineClass *mc = MACHINE_GET_CLASS(machine);
     const char *kernel_filename = machine->kernel_filename;
     const char *kernel_cmdline = machine->kernel_cmdline;
     const char *initrd_filename = machine->initrd_filename;
@@ -172,23 +166,18 @@ static void lm32_uclinux_init(MachineState *machine)
     CPULM32State *env;
     DriveInfo *dinfo;
     MemoryRegion *address_space_mem =  get_system_memory();
+    MemoryRegion *phys_ram = g_new(MemoryRegion, 1);
     qemu_irq irq[32];
     HWSetup *hw;
     ResetInfo *reset_info;
     int i;
-
-    if (machine->ram_size != mc->default_ram_size) {
-        char *sz = size_to_str(mc->default_ram_size);
-        error_report("Invalid RAM size, should be %s", sz);
-        g_free(sz);
-        exit(EXIT_FAILURE);
-    }
 
     /* memory map */
     hwaddr flash_base   = 0x04000000;
     size_t flash_sector_size        = 256 * KiB;
     size_t flash_size               = 32 * MiB;
     hwaddr ram_base     = 0x08000000;
+    size_t ram_size                 = 64 * MiB;
     hwaddr uart0_base   = 0x80000000;
     hwaddr timer0_base  = 0x80002000;
     hwaddr timer1_base  = 0x80010000;
@@ -211,7 +200,9 @@ static void lm32_uclinux_init(MachineState *machine)
 
     reset_info->flash_base = flash_base;
 
-    memory_region_add_subregion(address_space_mem, ram_base, machine->ram);
+    memory_region_allocate_system_memory(phys_ram, NULL,
+                                         "lm32_uclinux.sdram", ram_size);
+    memory_region_add_subregion(address_space_mem, ram_base, phys_ram);
 
     dinfo = drive_get(IF_PFLASH, 0, 0);
     /* Spansion S29NS128P */
@@ -241,13 +232,13 @@ static void lm32_uclinux_init(MachineState *machine)
         int kernel_size;
 
         kernel_size = load_elf(kernel_filename, NULL, NULL, NULL,
-                               &entry, NULL, NULL, NULL,
+                               &entry, NULL, NULL,
                                1, EM_LATTICEMICO32, 0, 0);
         reset_info->bootstrap_pc = entry;
 
         if (kernel_size < 0) {
             kernel_size = load_image_targphys(kernel_filename, ram_base,
-                                              machine->ram_size);
+                                              ram_size);
             reset_info->bootstrap_pc = ram_base;
         }
 
@@ -261,7 +252,7 @@ static void lm32_uclinux_init(MachineState *machine)
     hw = hwsetup_init();
     hwsetup_add_cpu(hw, "LM32", 75000000);
     hwsetup_add_flash(hw, "flash", flash_base, flash_size);
-    hwsetup_add_ddr_sdram(hw, "ddr_sdram", ram_base, machine->ram_size);
+    hwsetup_add_ddr_sdram(hw, "ddr_sdram", ram_base, ram_size);
     hwsetup_add_timer(hw, "timer0", timer0_base, timer0_irq);
     hwsetup_add_timer(hw, "timer1_dev_only", timer1_base, timer1_irq);
     hwsetup_add_timer(hw, "timer2_dev_only", timer2_base, timer2_irq);
@@ -295,10 +286,8 @@ static void lm32_evr_class_init(ObjectClass *oc, void *data)
 
     mc->desc = "LatticeMico32 EVR32 eval system";
     mc->init = lm32_evr_init;
-    mc->is_default = true;
+    mc->is_default = 1;
     mc->default_cpu_type = LM32_CPU_TYPE_NAME("lm32-full");
-    mc->default_ram_size = 64 * MiB;
-    mc->default_ram_id = "lm32_evr.sdram";
 }
 
 static const TypeInfo lm32_evr_type = {
@@ -313,9 +302,8 @@ static void lm32_uclinux_class_init(ObjectClass *oc, void *data)
 
     mc->desc = "lm32 platform for uClinux and u-boot by Theobroma Systems";
     mc->init = lm32_uclinux_init;
+    mc->is_default = 0;
     mc->default_cpu_type = LM32_CPU_TYPE_NAME("lm32-full");
-    mc->default_ram_size = 64 * MiB;
-    mc->default_ram_id = "lm32_uclinux.sdram";
 }
 
 static const TypeInfo lm32_uclinux_type = {

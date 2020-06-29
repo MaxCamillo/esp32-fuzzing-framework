@@ -16,14 +16,13 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
-
 #include "qemu/osdep.h"
 #include "qemu-common.h"
 #include "cpu.h"
 #include "trace.h"
 #include "disas/disas.h"
 #include "exec/exec-all.h"
-#include "tcg/tcg.h"
+#include "tcg.h"
 #include "qemu/atomic.h"
 #include "sysemu/qtest.h"
 #include "qemu/timer.h"
@@ -37,6 +36,8 @@
 #endif
 #include "sysemu/cpus.h"
 #include "sysemu/replay.h"
+
+#include "fuzz/hfuzz.h"
 
 /* -icount align implementation. */
 
@@ -137,14 +138,116 @@ static void init_delay_params(SyncClocks *sc, const CPUState *cpu)
 }
 #endif /* CONFIG USER ONLY */
 
+static bool inExitPoints(target_ulong pc) {
+    for(int i = 0; i < hfuzz_qemu_n_exit_points; i++) {
+        if (pc == hfuzz_qemu_exit_points[i])  { 
+            return true;
+        }
+    }
+    return false;
+}
+static void setup_fuzzing_entrypoint(CPUState *cpu) {
+
+    CPUArchState *env = cpu->env_ptr;
+    env->pc = hfuzz_qemu_entry_point;
+    // env->regs[0] = 0x800f4107;
+    // env->regs[1] = 0x3ffbd2e0;
+    // env->regs[2] = 0x3ffbb5b4;
+    // env->regs[3] = 0x0;
+    // env->regs[4] = 0x3ffbb60c;
+    // env->regs[5] = 0x0;
+    // env->regs[6] = 0x0;
+    // env->regs[7] = 0x0;
+    // env->regs[8] = 0x5c;
+    // env->regs[9] = 0x3ffbd2c0;
+    // env->regs[10] = 0x5c;
+    // env->regs[11] = 0x5c;
+    // env->regs[12] = 0x80;
+    // env->regs[13] = 0x5cf;
+    // env->regs[14] = 0x1;
+    // env->regs[15] = 0x4;
+
+    //***WIFI_AP****
+    // env->regs[0] = 0x800f68c7;
+    // env->regs[1] = 0x3ffc6be0;
+    // env->regs[2] = 0x3ffc4fa0;
+    // env->regs[3] = 0x0;
+    // env->regs[4] = 0x3ffc4ff8;
+    // env->regs[5] = 0x0;
+    // env->regs[6] = 0x0;
+    // env->regs[7] = 0x1;
+    // env->regs[8] = 0x800f67f0;
+    // env->regs[9] = 0x3ffc6bc0;
+    // env->regs[10] = 0x80;
+    // env->regs[11] = 0x80;
+    // env->regs[12] = 0x80;
+    // env->regs[13] = 0x3ffc4eb4;
+    // env->regs[14] = 0x1;
+    // env->regs[15] = 0x4;
+
+    //memory dump: -exec dump binary memory dump.bin 0x3FF80000 0x3FFFFFFF
+    int fd = open(hfuzz_dump_file, O_RDONLY | O_BINARY);
+
+    size_t dump_size = lseek(fd, 0, SEEK_END);
+
+    uint8_t *buf = malloc(dump_size);
+    lseek(fd, 0, SEEK_SET);
+
+    int rc = read(fd, buf, dump_size);
+    if (rc != dump_size) {
+        fprintf(stderr, "dump file %-20s: read error: rc=%d (expected %zd)\n",
+                hfuzz_dump_file, rc, dump_size);
+    }
+
+    address_space_rw(cpu->as, 0x3ff80000, MEMTXATTRS_UNSPECIFIED, buf, dump_size, true);
+
+    close(fd);
+
+    char reg_line[1024];
+
+    //printf("reg file: %s", hfuzz_regs_file);
+    FILE *fp = fopen(hfuzz_regs_file, "r" );
+
+    while (fgets(reg_line, sizeof(reg_line), fp)) {
+
+        uint32_t reg, val;
+
+        sscanf(reg_line, "a%d %x", &reg, &val);
+
+        //printf("a%d %x\n", reg, val);
+
+        env->regs[reg] = val;
+
+    }
+
+
+    fclose(fp);
+
+}
+#define MAX_STR_SIZE 64
+
 /* Execute a TB, and fix up the CPU state afterwards if necessary */
 static inline tcg_target_ulong cpu_tb_exec(CPUState *cpu, TranslationBlock *itb)
 {
     CPUArchState *env = cpu->env_ptr;
     uintptr_t ret;
-    TranslationBlock *last_tb;
+    TranslationBlock *last_tb = NULL;
     int tb_exit;
     uint8_t *tb_ptr = itb->tc.ptr;
+
+    if (env->pc == hfuzz_qemu_entry_point) {
+        if(!childProcess) {
+            qemu_mutex_lock_iothread();
+            hfuzz_qemu_setup(cpu);
+            qemu_mutex_unlock_iothread();
+        }
+    }
+
+    //trace pc for hfuzz
+    hfuzz_qemu_trace_pc(itb->pc);
+
+    //save calleeCallee for string compare functions
+    uint64_t calleeCallee = (env->pc & 0xE0000000) | (env->regs[0] & 0x1FFFFFFF);
 
     qemu_log_mask_and_addr(CPU_LOG_EXEC, itb->pc,
                            "Trace %d: %p ["
@@ -156,7 +259,7 @@ static inline tcg_target_ulong cpu_tb_exec(CPUState *cpu, TranslationBlock *itb)
 #if defined(DEBUG_DISAS)
     if (qemu_loglevel_mask(CPU_LOG_TB_CPU)
         && qemu_log_in_addr_range(itb->pc)) {
-        FILE *logfile = qemu_log_lock();
+        qemu_log_lock();
         int flags = 0;
         if (qemu_loglevel_mask(CPU_LOG_TB_FPU)) {
             flags |= CPU_DUMP_FPU;
@@ -165,11 +268,66 @@ static inline tcg_target_ulong cpu_tb_exec(CPUState *cpu, TranslationBlock *itb)
         flags |= CPU_DUMP_CCOP;
 #endif
         log_cpu_state(cpu, flags);
-        qemu_log_unlock(logfile);
+        qemu_log_unlock();
     }
 #endif /* DEBUG_DISAS */
 
     ret = tcg_qemu_tb_exec(env, tb_ptr);
+
+    /*Trace esp32 string compare functions for hfuzz */
+    //strncasecmp
+    if(itb->pc == 0x40001550) {//strncasecmp //size in regs[4] = a4
+          uint8_t a[MAX_STR_SIZE];
+          uint8_t b[MAX_STR_SIZE];
+
+          uint64_t size = MAX_STR_SIZE < env->regs[4] ? MAX_STR_SIZE : env->regs[4];
+
+          address_space_read(cpu->as, env->regs[2], MEMTXATTRS_UNSPECIFIED, a,size );
+
+          address_space_read(cpu->as, env->regs[3], MEMTXATTRS_UNSPECIFIED, b,size );
+
+          hfuzz_qemu_trace_strcmp((env->pc & 0xE0000000) | (env->regs[0] & 0x1FFFFFFF), calleeCallee, a, b, size);
+
+    } else if(itb->pc == 0x400011cc) { //strcasecmp
+
+        uint8_t a[MAX_STR_SIZE];
+        uint8_t b[MAX_STR_SIZE];
+
+        uint64_t size = MAX_STR_SIZE;
+
+        address_space_read(cpu->as, env->regs[2], MEMTXATTRS_UNSPECIFIED, a,size );
+
+        address_space_read(cpu->as, env->regs[3], MEMTXATTRS_UNSPECIFIED, b,size );
+
+        hfuzz_qemu_trace_strcmp((env->pc & 0xE0000000) | (env->regs[0] & 0x1FFFFFFF),calleeCallee, a, b, size);
+
+
+    } else if(itb->pc == 0x4000c5f4) { //strncmp //size in regs[4] = a4?
+          uint8_t a[MAX_STR_SIZE];
+          uint8_t b[MAX_STR_SIZE];
+
+          uint64_t size = MAX_STR_SIZE < env->regs[4] ? MAX_STR_SIZE : env->regs[4];
+
+          address_space_read(cpu->as, env->regs[2], MEMTXATTRS_UNSPECIFIED, a,size );
+
+          address_space_read(cpu->as, env->regs[3], MEMTXATTRS_UNSPECIFIED, b,size );
+
+          hfuzz_qemu_trace_strcmp((env->pc & 0xE0000000) | (env->regs[0] & 0x1FFFFFFF),calleeCallee, a, b, size);
+
+    } else if(itb->pc == 0x40001274) { //strcmp
+        uint8_t a[MAX_STR_SIZE];
+        uint8_t b[MAX_STR_SIZE];
+
+        uint64_t size = MAX_STR_SIZE;
+
+        address_space_read(cpu->as, env->regs[2], MEMTXATTRS_UNSPECIFIED, a,size );
+
+        address_space_read(cpu->as, env->regs[3], MEMTXATTRS_UNSPECIFIED, b,size );
+
+        hfuzz_qemu_trace_strcmp((env->pc & 0xE0000000) | (env->regs[0] & 0x1FFFFFFF), calleeCallee, a, b, size);
+
+    } 
+
     cpu->can_do_io = 1;
     last_tb = (TranslationBlock *)(ret & ~TB_EXIT_MASK);
     tb_exit = ret & TB_EXIT_MASK;
@@ -193,6 +351,30 @@ static inline tcg_target_ulong cpu_tb_exec(CPUState *cpu, TranslationBlock *itb)
             cc->set_pc(cpu, last_tb->pc);
         }
     }
+
+#ifdef HFUZZ_FORKSERVER
+
+    if (inExitPoints(env->pc) )  {
+
+        if(childProcess) {
+            printf("exit\n");
+            exit(0);
+        } else { //rerun from entrypoint
+            setup_fuzzing_entrypoint(cpu);
+        }
+    }
+    
+    if(env->pc == hfuzz_qemu_setup_point) { //main     
+#ifdef BLACKBOX_FUZZING
+        setup_fuzzing_entrypoint(cpu);
+#else
+        hfuzz_qemu_setup(cpu);
+#endif
+    }
+#endif //HFUZZ_FORKSERVER
+
+
+    
     return ret;
 }
 
@@ -240,14 +422,14 @@ void cpu_exec_step_atomic(CPUState *cpu)
     uint32_t cf_mask = cflags & CF_HASH_MASK;
 
     if (sigsetjmp(cpu->jmp_env, 0) == 0) {
-        start_exclusive();
-
         tb = tb_lookup__cpu_state(cpu, &pc, &cs_base, &flags, cf_mask);
         if (tb == NULL) {
             mmap_lock();
             tb = tb_gen_code(cpu, pc, cs_base, flags, cflags);
             mmap_unlock();
         }
+
+        start_exclusive();
 
         /* Since we got here, we know that parallel_cpus must be true.  */
         parallel_cpus = false;
@@ -271,15 +453,14 @@ void cpu_exec_step_atomic(CPUState *cpu)
         qemu_plugin_disable_mem_helpers(cpu);
     }
 
-
-    /*
-     * As we start the exclusive region before codegen we must still
-     * be in the region if we longjump out of either the codegen or
-     * the execution.
-     */
-    g_assert(cpu_in_exclusive_context(cpu));
-    parallel_cpus = true;
-    end_exclusive();
+    if (cpu_in_exclusive_context(cpu)) {
+        /* We might longjump out of either the codegen or the
+         * execution, so must make sure we only end the exclusive
+         * region if we started it.
+         */
+        parallel_cpus = true;
+        end_exclusive();
+    }
 }
 
 struct tb_desc {
@@ -419,8 +600,12 @@ static inline TranslationBlock *tb_find(CPUState *cpu,
     }
 #endif
     /* See if we can patch the calling TB. */
-    if (last_tb) {
-        tb_add_jump(last_tb, tb_exit, tb);
+    if (last_tb) { 
+        //Don't chain entry and exit TB as we would not find them anymore!
+
+        if(pc != hfuzz_qemu_entry_point && !inExitPoints(pc)) {
+            tb_add_jump(last_tb, tb_exit, tb);
+        }
     }
     return tb;
 }

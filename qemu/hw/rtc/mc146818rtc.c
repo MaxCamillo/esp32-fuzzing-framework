@@ -1015,7 +1015,7 @@ static void rtc_class_initfn(ObjectClass *klass, void *data)
     dc->realize = rtc_realizefn;
     dc->reset = rtc_resetdev;
     dc->vmsd = &vmstate_rtc;
-    device_class_set_props(dc, mc146818rtc_properties);
+    dc->props = mc146818rtc_properties;
 }
 
 static const TypeInfo mc146818rtc_info = {

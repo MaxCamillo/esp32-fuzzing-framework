@@ -14,8 +14,6 @@
 
 . common.rc
 
-requires docs
-
 cd "$BUILD_DIR"
 
 # build everything else but QEMU

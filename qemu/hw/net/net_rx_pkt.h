@@ -133,11 +133,7 @@ typedef enum {
     NetPktRssIpV4Tcp,
     NetPktRssIpV6Tcp,
     NetPktRssIpV6,
-    NetPktRssIpV6Ex,
-    NetPktRssIpV6TcpEx,
-    NetPktRssIpV4Udp,
-    NetPktRssIpV6Udp,
-    NetPktRssIpV6UdpEx,
+    NetPktRssIpV6Ex
 } NetRxPktRssType;
 
 /**

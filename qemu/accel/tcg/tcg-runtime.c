@@ -30,7 +30,6 @@
 #include "exec/tb-lookup.h"
 #include "disas/disas.h"
 #include "exec/log.h"
-#include "tcg/tcg.h"
 
 /* 32-bit helpers */
 

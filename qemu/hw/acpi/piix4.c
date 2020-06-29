@@ -38,7 +38,6 @@
 #include "hw/acpi/cpu.h"
 #include "hw/hotplug.h"
 #include "hw/mem/pc-dimm.h"
-#include "hw/mem/nvdimm.h"
 #include "hw/acpi/memory_hotplug.h"
 #include "hw/acpi/acpi_dev_interface.h"
 #include "hw/xen/xen.h"
@@ -444,17 +443,17 @@ static void piix4_pm_add_propeties(PIIX4PMState *s)
     static const uint16_t sci_int = 9;
 
     object_property_add_uint8_ptr(OBJECT(s), ACPI_PM_PROP_ACPI_ENABLE_CMD,
-                                  &acpi_enable_cmd, OBJ_PROP_FLAG_READ, NULL);
+                                  &acpi_enable_cmd, NULL);
     object_property_add_uint8_ptr(OBJECT(s), ACPI_PM_PROP_ACPI_DISABLE_CMD,
-                                  &acpi_disable_cmd, OBJ_PROP_FLAG_READ, NULL);
+                                  &acpi_disable_cmd, NULL);
     object_property_add_uint32_ptr(OBJECT(s), ACPI_PM_PROP_GPE0_BLK,
-                                  &gpe0_blk, OBJ_PROP_FLAG_READ, NULL);
+                                  &gpe0_blk, NULL);
     object_property_add_uint32_ptr(OBJECT(s), ACPI_PM_PROP_GPE0_BLK_LEN,
-                                  &gpe0_blk_len, OBJ_PROP_FLAG_READ, NULL);
+                                  &gpe0_blk_len, NULL);
     object_property_add_uint16_ptr(OBJECT(s), ACPI_PM_PROP_SCI_INT,
-                                  &sci_int, OBJ_PROP_FLAG_READ, NULL);
+                                  &sci_int, NULL);
     object_property_add_uint32_ptr(OBJECT(s), ACPI_PM_PROP_PM_IO_BASE,
-                                  &s->io_base, OBJ_PROP_FLAG_READ, NULL);
+                                  &s->io_base, NULL);
 }
 
 static void piix4_pm_realize(PCIDevice *dev, Error **errp)
@@ -654,7 +653,7 @@ static void piix4_pm_class_init(ObjectClass *klass, void *data)
     dc->reset = piix4_pm_reset;
     dc->desc = "PM";
     dc->vmsd = &vmstate_acpi;
-    device_class_set_props(dc, piix4_pm_properties);
+    dc->props = piix4_pm_properties;
     /*
      * Reason: part of PIIX4 southbridge, needs to be wired up,
      * e.g. by mips_malta_init()

@@ -59,14 +59,10 @@ status)
     fi
 
     test -f "$substat" || exit 1
-    for module in $modules; do
-        CURSTATUS=$($GIT submodule status $module)
-        OLDSTATUS=$(cat $substat | grep $module)
-        if test "$CURSTATUS" != "$OLDSTATUS"; then
-            exit 1
-        fi
-    done
-    exit 0
+    CURSTATUS=$($GIT submodule status $modules)
+    OLDSTATUS=$(cat $substat)
+    test "$CURSTATUS" = "$OLDSTATUS"
+    exit $?
     ;;
 update)
     if test -z "$maybe_modules"

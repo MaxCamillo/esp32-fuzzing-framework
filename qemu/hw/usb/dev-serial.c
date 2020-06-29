@@ -29,7 +29,7 @@ do { printf("usb-serial: " fmt , ## __VA_ARGS__); } while (0)
 #define DPRINTF(fmt, ...) do {} while(0)
 #endif
 
-#define RECV_BUF (512 - (2 * 8))
+#define RECV_BUF 384
 
 /* Commands */
 #define FTDI_RESET		0
@@ -98,7 +98,6 @@ do { printf("usb-serial: " fmt , ## __VA_ARGS__); } while (0)
 
 typedef struct {
     USBDevice dev;
-    USBEndpoint *intr;
     uint8_t recv_buf[RECV_BUF];
     uint16_t recv_ptr;
     uint16_t recv_used;
@@ -154,7 +153,7 @@ static const USBDescDevice desc_device = {
         {
             .bNumInterfaces        = 1,
             .bConfigurationValue   = 1,
-            .bmAttributes          = USB_CFG_ATT_ONE | USB_CFG_ATT_WAKEUP,
+            .bmAttributes          = USB_CFG_ATT_ONE,
             .bMaxPower             = 50,
             .nif = 1,
             .ifs = &desc_iface0,
@@ -332,7 +331,7 @@ static void usb_serial_handle_control(USBDevice *dev, USBPacket *p,
         break;
     case DeviceInVendor | FTDI_GET_MDM_ST:
         data[0] = usb_get_modem_lines(s) | 1;
-        data[1] = FTDI_THRE | FTDI_TEMT;
+        data[1] = 0;
         p->actual_length = 2;
         break;
     case DeviceOutVendor | FTDI_SET_EVENT_CHR:
@@ -358,67 +357,13 @@ static void usb_serial_handle_control(USBDevice *dev, USBPacket *p,
     }
 }
 
-static void usb_serial_token_in(USBSerialState *s, USBPacket *p)
-{
-    const int max_packet_size = desc_iface0.eps[0].wMaxPacketSize;
-    int packet_len;
-    uint8_t header[2];
-
-    packet_len = p->iov.size;
-    if (packet_len <= 2) {
-        p->status = USB_RET_NAK;
-        return;
-    }
-
-    header[0] = usb_get_modem_lines(s) | 1;
-    /* We do not have the uart details */
-    /* handle serial break */
-    if (s->event_trigger && s->event_trigger & FTDI_BI) {
-        s->event_trigger &= ~FTDI_BI;
-        header[1] = FTDI_BI;
-        usb_packet_copy(p, header, 2);
-        return;
-    } else {
-        header[1] = 0;
-    }
-
-    if (!s->recv_used) {
-        p->status = USB_RET_NAK;
-        return;
-    }
-
-    while (s->recv_used && packet_len > 2) {
-        int first_len, len;
-
-        len = MIN(packet_len, max_packet_size);
-        len -= 2;
-        if (len > s->recv_used) {
-            len = s->recv_used;
-        }
-
-        first_len = RECV_BUF - s->recv_ptr;
-        if (first_len > len) {
-            first_len = len;
-        }
-        usb_packet_copy(p, header, 2);
-        usb_packet_copy(p, s->recv_buf + s->recv_ptr, first_len);
-        if (len > first_len) {
-            usb_packet_copy(p, s->recv_buf, len - first_len);
-        }
-        s->recv_used -= len;
-        s->recv_ptr = (s->recv_ptr + len) % RECV_BUF;
-        packet_len -= len + 2;
-    }
-
-    return;
-}
-
 static void usb_serial_handle_data(USBDevice *dev, USBPacket *p)
 {
     USBSerialState *s = (USBSerialState *)dev;
     uint8_t devep = p->ep->nr;
     struct iovec *iov;
-    int i;
+    uint8_t header[2];
+    int i, first_len, len;
 
     switch (p->pid) {
     case USB_TOKEN_OUT:
@@ -436,7 +381,38 @@ static void usb_serial_handle_data(USBDevice *dev, USBPacket *p)
     case USB_TOKEN_IN:
         if (devep != 1)
             goto fail;
-        usb_serial_token_in(s, p);
+        first_len = RECV_BUF - s->recv_ptr;
+        len = p->iov.size;
+        if (len <= 2) {
+            p->status = USB_RET_NAK;
+            break;
+        }
+        header[0] = usb_get_modem_lines(s) | 1;
+        /* We do not have the uart details */
+        /* handle serial break */
+        if (s->event_trigger && s->event_trigger & FTDI_BI) {
+            s->event_trigger &= ~FTDI_BI;
+            header[1] = FTDI_BI;
+            usb_packet_copy(p, header, 2);
+            break;
+        } else {
+            header[1] = 0;
+        }
+        len -= 2;
+        if (len > s->recv_used)
+            len = s->recv_used;
+        if (!len) {
+            p->status = USB_RET_NAK;
+            break;
+        }
+        if (first_len > len)
+            first_len = len;
+        usb_packet_copy(p, header, 2);
+        usb_packet_copy(p, s->recv_buf + s->recv_ptr, first_len);
+        if (len > first_len)
+            usb_packet_copy(p, s->recv_buf, len - first_len);
+        s->recv_used -= len;
+        s->recv_ptr = (s->recv_ptr + len) % RECV_BUF;
         break;
 
     default:
@@ -483,11 +459,9 @@ static void usb_serial_read(void *opaque, const uint8_t *buf, int size)
         memcpy(s->recv_buf + start, buf, size);
     }
     s->recv_used += size;
-
-    usb_wakeup(s->intr, 0);
 }
 
-static void usb_serial_event(void *opaque, QEMUChrEvent event)
+static void usb_serial_event(void *opaque, int event)
 {
     USBSerialState *s = opaque;
 
@@ -504,10 +478,6 @@ static void usb_serial_event(void *opaque, QEMUChrEvent event)
             if (s->dev.attached) {
                 usb_device_detach(&s->dev);
             }
-            break;
-        case CHR_EVENT_MUX_IN:
-        case CHR_EVENT_MUX_OUT:
-            /* Ignore */
             break;
     }
 }
@@ -539,7 +509,6 @@ static void usb_serial_realize(USBDevice *dev, Error **errp)
     if (qemu_chr_fe_backend_open(&s->cs) && !dev->attached) {
         usb_device_attach(dev, &error_abort);
     }
-    s->intr = usb_ep_get(dev, USB_TOKEN_IN, 1);
 }
 
 static USBDevice *usb_braille_init(USBBus *bus, const char *unused)
@@ -594,7 +563,7 @@ static void usb_serial_class_initfn(ObjectClass *klass, void *data)
 
     uc->product_desc   = "QEMU USB Serial";
     uc->usb_desc       = &desc_serial;
-    device_class_set_props(dc, serial_properties);
+    dc->props = serial_properties;
 }
 
 static const TypeInfo serial_info = {
@@ -615,7 +584,7 @@ static void usb_braille_class_initfn(ObjectClass *klass, void *data)
 
     uc->product_desc   = "QEMU USB Braille";
     uc->usb_desc       = &desc_braille;
-    device_class_set_props(dc, braille_properties);
+    dc->props = braille_properties;
 }
 
 static const TypeInfo braille_info = {

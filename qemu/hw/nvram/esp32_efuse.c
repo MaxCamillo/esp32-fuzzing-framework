@@ -277,7 +277,7 @@ static void esp32_efuse_class_init(ObjectClass *klass, void *data)
 
     dc->reset = esp32_efuse_reset;
     dc->realize = esp32_efuse_realize;
-    device_class_set_props(dc, esp32_efuse_properties);
+    dc->props = esp32_efuse_properties;
 }
 
 static const TypeInfo esp32_efuse_info = {

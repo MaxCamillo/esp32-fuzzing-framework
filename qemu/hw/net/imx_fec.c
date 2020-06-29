@@ -855,15 +855,13 @@ static void imx_enet_write(IMXFECState *s, uint32_t index, uint32_t value)
         break;
     case ENET_TGSR:
         /* implement clear timer flag */
-        s->regs[index] &= ~(value & 0x0000000f); /* all bits W1C */
+        value = value & 0x0000000f;
         break;
     case ENET_TCSR0:
     case ENET_TCSR1:
     case ENET_TCSR2:
     case ENET_TCSR3:
-        s->regs[index] &= ~(value & 0x00000080); /* W1C bits */
-        s->regs[index] &= ~0x0000007d; /* writable fields */
-        s->regs[index] |= (value & 0x0000007d);
+        value = value & 0x000000fd;
         break;
     case ENET_TCCR0:
     case ENET_TCCR1:
@@ -903,16 +901,15 @@ static void imx_eth_write(void *opaque, hwaddr offset, uint64_t value,
             s->regs[index] = 0;
         }
         break;
-    case ENET_TDAR1:
-    case ENET_TDAR2:
+    case ENET_TDAR1:    /* FALLTHROUGH */
+    case ENET_TDAR2:    /* FALLTHROUGH */
         if (unlikely(single_tx_ring)) {
             qemu_log_mask(LOG_GUEST_ERROR,
                           "[%s]%s: trying to access TDAR2 or TDAR1\n",
                           TYPE_IMX_FEC, __func__);
             return;
         }
-        /* fall through */
-    case ENET_TDAR:
+    case ENET_TDAR:     /* FALLTHROUGH */
         if (s->regs[ENET_ECR] & ENET_ECR_ETHEREN) {
             s->regs[index] = ENET_TDAR_TDAR;
             imx_eth_do_tx(s, index);
@@ -1049,7 +1046,7 @@ static void imx_eth_write(void *opaque, hwaddr offset, uint64_t value,
     imx_eth_update(s);
 }
 
-static bool imx_eth_can_receive(NetClientState *nc)
+static int imx_eth_can_receive(NetClientState *nc)
 {
     IMXFECState *s = IMX_FEC(qemu_get_nic_opaque(nc));
 
@@ -1340,7 +1337,7 @@ static void imx_eth_class_init(ObjectClass *klass, void *data)
 
     dc->vmsd    = &vmstate_imx_eth;
     dc->reset   = imx_eth_reset;
-    device_class_set_props(dc, imx_eth_properties);
+    dc->props   = imx_eth_properties;
     dc->realize = imx_eth_realize;
     dc->desc    = "i.MX FEC/ENET Ethernet Controller";
 }

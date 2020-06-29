@@ -44,7 +44,7 @@ typedef struct HPPACPUClass {
     /*< public >*/
 
     DeviceRealize parent_realize;
-    DeviceReset parent_reset;
+    void (*parent_reset)(CPUState *cpu);
 } HPPACPUClass;
 
 typedef struct HPPACPU HPPACPU;

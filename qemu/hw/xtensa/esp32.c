@@ -25,6 +25,7 @@
 #include "hw/misc/esp32_rtc_cntl.h"
 #include "hw/misc/esp32_rng.h"
 #include "hw/misc/esp32_sha.h"
+#include "hw/misc/esp32_aes.h"
 #include "hw/timer/esp32_frc_timer.h"
 #include "hw/timer/esp32_timg.h"
 #include "hw/ssi/esp32_spi.h"
@@ -41,6 +42,7 @@
 #include "exec/exec-all.h"
 #include "net/net.h"
 #include "elf.h"
+#include "fuzz/hfuzz.h"
 
 #define TYPE_ESP32_SOC "xtensa.esp32"
 #define ESP32_SOC(obj) OBJECT_CHECK(Esp32SocState, (obj), TYPE_ESP32_SOC)
@@ -49,6 +51,16 @@
 
 typedef struct XtensaCPU XtensaCPU;
 
+/**
+ * Start and end of instrumentation address range
+ */
+const target_ulong hfuzz_qemu_start_code = 0x400C2000;
+const target_ulong hfuzz_qemu_end_code = 0x40BFFFFF;
+
+/**
+ * Flage wheater process is a child process.
+ */
+bool childProcess = false;
 
 enum {
     ESP32_MEMREGION_IROM,
@@ -101,6 +113,7 @@ typedef struct Esp32SocState {
     Esp32TimgState timg[ESP32_TIMG_COUNT];
     Esp32SpiState spi[ESP32_SPI_COUNT];
     Esp32ShaState sha;
+    Esp32AesState aes;
     Esp32EfuseState efuse;
     DeviceState *eth;
 
@@ -131,6 +144,7 @@ static void esp32_cpu_reset(void* opaque, int n, int level)
         ShutdownCause cause = (n == 0) ? SHUTDOWN_CAUSE_GUEST_RESET : SHUTDOWN_CAUSE_SUBSYSTEM_RESET;
         qemu_system_reset_request(cause);
     }
+
 }
 
 static void esp32_timg_cpu_reset(void* opaque, int n, int level)
@@ -182,28 +196,29 @@ static void esp32_soc_reset(DeviceState *dev)
         s->requested_reset = ESP32_SOC_RESET_ALL;
     }
     if (s->requested_reset & ESP32_SOC_RESET_RTC) {
-        device_cold_reset(DEVICE(&s->rtc_cntl));
+        device_reset(DEVICE(&s->rtc_cntl));
     }
     if (s->requested_reset & ESP32_SOC_RESET_PERIPH) {
-        device_cold_reset(DEVICE(&s->dport));
-        device_cold_reset(DEVICE(&s->sha));
-        device_cold_reset(DEVICE(&s->gpio));
+        device_reset(DEVICE(&s->dport));
+        device_reset(DEVICE(&s->sha));
+        device_reset(DEVICE(&s->aes));
+        device_reset(DEVICE(&s->gpio));
         for (int i = 0; i < ESP32_UART_COUNT; ++i) {
-            device_cold_reset(DEVICE(&s->uart));
+            device_reset(DEVICE(&s->uart));
         }
         for (int i = 0; i < ESP32_FRC_COUNT; ++i) {
-            device_cold_reset(DEVICE(&s->frc_timer[i]));
+            device_reset(DEVICE(&s->frc_timer[i]));
         }
         for (int i = 0; i < ESP32_TIMG_COUNT; ++i) {
-            device_cold_reset(DEVICE(&s->timg[i]));
+            device_reset(DEVICE(&s->timg[i]));
         }
         s->timg[0].flash_boot_mode = flash_boot_mode;
         for (int i = 0; i < ESP32_SPI_COUNT; ++i) {
-            device_cold_reset(DEVICE(&s->spi[i]));
+            device_reset(DEVICE(&s->spi[i]));
         }
-        device_cold_reset(DEVICE(&s->efuse));
+        device_reset(DEVICE(&s->efuse));
         if (s->eth) {
-            device_cold_reset(s->eth);
+            device_reset(s->eth);
         }
     }
     if (s->requested_reset & ESP32_SOC_RESET_PROCPU) {
@@ -217,6 +232,37 @@ static void esp32_soc_reset(DeviceState *dev)
         cpu_reset(CPU(&s->cpu[1]));
     }
     s->requested_reset = 0;
+
+        // CPUXtensaState *env = &s->cpu[0].env;
+
+        // env->pc = 0x400f55bc;
+        // env->regs[0] = 0x800f5693;
+        // env->regs[1] = 0x3ffbd2d0;
+        // env->regs[2] = 0x3ffbb59c;
+        // env->regs[3] = 0x0;
+        // env->regs[4] = 0x3ffbb5f4;
+        // env->regs[5] = 0x0;
+        // env->regs[6] = 0x0;
+        // env->regs[7] = 0x0;
+        // env->regs[8] = 0x5c;
+        // env->regs[9] = 0x3ffbd2b0;
+        // env->regs[10] = 0x5c;
+        // env->regs[11] = 0x5c;
+        // env->regs[12] = 0x80;
+        // env->regs[13] = 0x3ffbbfd4;
+        // env->regs[14] = 0x1;
+        // env->regs[15] = 0x4;
+
+
+        // char *rom_binary = qemu_find_file(QEMU_FILE_TYPE_BIOS, "/home/max/thesis/esp32_http_server/dump.bin");
+        // if (rom_binary == NULL) {
+        //     error_report("Error: -bios argument not set, and ROM code binary not found");
+        //     exit(1);
+        // }
+
+        // //address_space_rw(env->address_space_er, 0x3FF80000, MEMTXATTRS_UNSPECIFIED, (uint8_t *)rom_binary, 0x80000, true);
+
+        // g_free(rom_binary);
 }
 
 static void esp32_cpu_stall(void* opaque, int n, int level)
@@ -361,6 +407,9 @@ static void esp32_soc_realize(DeviceState *dev, Error **errp)
     object_property_set_bool(OBJECT(&s->sha), true, "realized", &error_abort);
     esp32_soc_add_periph_device(sys_mem, &s->sha, DR_REG_SHA_BASE);
 
+    object_property_set_bool(OBJECT(&s->aes), true, "realized", &error_abort);
+    esp32_soc_add_periph_device(sys_mem, &s->aes, DR_REG_AES_BASE);
+
     object_property_set_bool(OBJECT(&s->rtc_cntl), true, "realized", &error_abort);
     esp32_soc_add_periph_device(sys_mem, &s->rtc_cntl, DR_REG_RTCCNTL_BASE);
 
@@ -438,6 +487,8 @@ static void esp32_soc_realize(DeviceState *dev, Error **errp)
                        qdev_get_gpio_in(intmatrix_dev, ETS_EFUSE_INTR_SOURCE));
 
 
+    //esp32_soc_add_unimp_device(sys_mem, "esp32.aes", DR_REG_AES_BASE, 0x1000);
+    esp32_soc_add_unimp_device(sys_mem, "esp32.rsa", DR_REG_RSA_BASE, 0x1000);
     esp32_soc_add_unimp_device(sys_mem, "esp32.analog", DR_REG_ANA_BASE, 0x1000);
     esp32_soc_add_unimp_device(sys_mem, "esp32.rtcio", DR_REG_RTCIO_BASE, 0x400);
     esp32_soc_add_unimp_device(sys_mem, "esp32.rtcio", DR_REG_SENS_BASE, 0x400);
@@ -447,9 +498,15 @@ static void esp32_soc_realize(DeviceState *dev, Error **errp)
     esp32_soc_add_unimp_device(sys_mem, "esp32.slchost", DR_REG_SLCHOST_BASE, 0x1000);
     esp32_soc_add_unimp_device(sys_mem, "esp32.apbctrl", DR_REG_APB_CTRL_BASE, 0x1000);
     esp32_soc_add_unimp_device(sys_mem, "esp32.i2s0", DR_REG_I2S_BASE, 0x1000);
+    esp32_soc_add_unimp_device(sys_mem, "esp32.bt", DR_REG_BT_BASE, 0x2000);
     esp32_soc_add_unimp_device(sys_mem, "esp32.i2s1", DR_REG_I2S1_BASE, 0x1000);
     esp32_soc_add_unimp_device(sys_mem, "esp32.i2c0", DR_REG_I2C_EXT_BASE, 0x1000);
     esp32_soc_add_unimp_device(sys_mem, "esp32.i2c1", DR_REG_I2C1_EXT_BASE, 0x1000);
+    esp32_soc_add_unimp_device(sys_mem, "esp32.pwm1", DR_REG_PWM1_BASE, 0x1000);
+    esp32_soc_add_unimp_device(sys_mem, "esp32.pwm2", DR_REG_PWM2_BASE, 0x1000);
+    esp32_soc_add_unimp_device(sys_mem, "esp32.pwm3", DR_REG_PWM3_BASE, 0x4000);
+
+    esp32_soc_add_unimp_device(sys_mem, "esp32.ledc", DR_REG_LEDC_BASE, 0x1000);
 
     qemu_register_reset((QEMUResetHandler*) esp32_soc_reset, dev);
 }
@@ -525,6 +582,9 @@ static void esp32_soc_init(Object *obj)
     object_initialize_child(obj, "sha", &s->sha, sizeof(s->sha),
                                 TYPE_ESP32_SHA, &error_abort, NULL);
 
+    object_initialize_child(obj, "aes", &s->aes, sizeof(s->aes),
+                                TYPE_ESP32_AES, &error_abort, NULL);
+
     object_initialize_child(obj, "efuse", &s->efuse, sizeof(s->efuse),
                                     TYPE_ESP32_EFUSE, &error_abort, NULL);
 
@@ -547,7 +607,7 @@ static void esp32_soc_class_init(ObjectClass *klass, void *data)
 
     dc->reset = esp32_soc_reset;
     dc->realize = esp32_soc_realize;
-    device_class_set_props(dc, esp32_soc_properties);
+    dc->props = esp32_soc_properties;
 }
 
 static const TypeInfo esp32_soc_info = {
@@ -608,6 +668,354 @@ static void esp32_machine_init_openeth(Esp32SocState *ss)
     }
 }
 
+typedef struct Esp32WifiState {
+
+    uint32_t reg[0x100000];
+    int i2c_block;
+    int i2c_reg;
+} Esp32WifiState;
+
+typedef struct Esp32PhyState {
+
+    uint32_t reg[0x10000];
+    int i2c_block;
+    int i2c_reg;
+} Esp32PhyState;
+
+static unsigned char guess=0x98;
+
+
+__attribute__((unused)) static uint64_t esp_wifi_read(void *opaque, hwaddr addr,
+        unsigned size)
+{
+
+    Esp32WifiState *s=opaque;
+
+    //printf("wifi read %" PRIx64 " \n",addr);
+
+
+        // WDEV_RND_REG
+
+        if (addr==0x35144) {
+            static int rr=47;
+             rr=rr*735%65535;
+             //printf("WDEV_RND_REG\n");
+            return (rr);
+        }
+    
+    // e004   rom i2c 
+    // e044   rom i2c
+/*
+    uint8_t rom_i2c_readReg(uint8_t block, uint8_t host_id, uint8_t reg_add);
+    uint8_t rom_i2c_readReg_Mask(uint8_t block, uint8_t host_id, uint8_t reg_add, uint8_t msb, uint8_t lsb);
+    void rom_i2c_writeReg(uint8_t block, uint8_t host_id, uint8_t reg_add, uint8_t pData);
+    void rom_i2c_writeReg_Mask(uint8_t block, uint8_t host_id, uint8_t reg_add, uint8_t msb, uint8_t lsb, uint8_t indata);
+stack 0x3ffe3cc0,
+p/x $a2-7
+0x62,0x01,0x06,  0x03,0x00, -256 (0xffffff00)
+#0  0x400041c3 in rom_i2c_readReg_Mask ()
+(gdb) p/x $a2
+$35 = 0x62
+(gdb) p/x $a3
+$36 = 0x1
+(gdb) p/x $a4
+$37 = 0x6
+wifi read e044 
+wifi write e044,fffff0ff 
+wifi read e044 
+wifi write e044,fffff7ff 
+wifi read e004 
+wifi write e004,662 
+wifi read e004 
+wifi read e004 
+get_rf_freq_init
+#-1 #0  0x40004148 in rom_i2c_readReg ()
+#0  0x400041c3 in rom_i2c_readReg_Mask ()
+#1  0x40085b3c in get_rf_freq_cap (freq=<optimized out>, freq_offset=0, x_reg=<optimized out>,
+    cap_array=0x3ffe3d0f "") at phy_chip_v7_ana.c:810
+#2  0x40085cd9 in get_rf_freq_init () at phy_chip_v7_ana.c:900
+#3  0x40086aae in set_chan_freq_hw_init (tx_freq_offset=2 '\002', rx_freq_offset=4 '\004') at phy_chip_v7_ana.c:1492
+#4  0x40086d01 in rf_init () at phy_chip_v7_ana.c:795
+#5  0x40089b6a in register_chipv7_phy (init_param=<optimized out>, rf_cal_data=0x3ffb79e8 "", rf_cal_level=2 '\002')
+#6  0x400d13f0 in esp_phy_init (init_data=0x3f401828 <phy_init_data>, mode=PHY_RF_CAL_FULL,
+    calibration_data=0x3ffb79e8) at /home/olas/esp/esp-idf/components/esp32/./phy_init.c:50
+#7  0x400d0e43 in do_phy_init () at /home/olas/esp/esp-idf/components/esp32/./cpu_start.c:295
+rom_i2c_reg block 0x62 reg 0x6 02
+bf
+4f
+88
+77
+b4
+00
+02
+00
+00
+07
+b0
+08
+00
+00
+00
+00
+rom_i2c_reg block 0x67 reg 0x6 57
+00
+b5
+bf
+41
+43
+55
+57
+55
+57
+71
+10
+71
+10
+00
+ea
+ec
+*/
+
+
+/*    
+rom_i2c_reg block 0x67 reg 0x6 57
+*/
+
+    if (addr==0xe004) {
+        //fprintf(stderr,"(qemu ret) internal i2c block 0x62 %02x %d\n",s->i2c_reg,guess );
+    }
+
+    if (s->i2c_block==0x67) {
+        if (addr==0xe004) {
+            //fprintf(stderr,"(qemu ret) internal i2c block 0x67 %02x\n",s->i2c_reg );            
+            switch (s->i2c_reg) {
+                case 0: return 0x00;
+                case 1: return 0xb5;
+                case 2: return 0xbf;
+                case 3: return 0x41;
+                case 4: return 0x43;
+                case 5: return 0x55;
+                case 6: return 0x57;
+                case 7: return 0x55;
+                case 8: return 0x57;
+                case 9: return 0x71;
+                case 10: return 0x10;
+                case 11: return 0x71;
+                case 12: return 0x10;
+                case 13: return 0x00;
+                case 14: return 0xea;
+                case 15: return 0xec;   
+                default: return 0xff;
+            }
+        }
+    }
+
+
+
+    if (s->i2c_block==0x62) {
+        if (addr==0xe004) {
+
+            //fprintf(stderr,"(qemu ret) internal i2c block 0x62 %02x %d\n",s->i2c_reg,guess );
+            
+            switch (s->i2c_reg) {
+                case 0: return 0xbf;
+                case 1: return 0x4f;
+                case 2: return 0x88;
+                case 3: return 0x77;
+                case 4: return 0xb4;
+                case 5: return 0x00;
+                case 6: return 0x02;
+                case 7: return (100*guess++);
+                case 8: return 0x00;
+                case 9: return 0x07;
+                case 10: return 0xb0;
+                case 11: return 0x08;
+
+                default: return 0xff;
+            }
+        }
+    }
+
+    switch(addr) {
+    case 0x0:
+        printf("0x0000000000000000\n");
+        break;
+    case 0x40:
+        return 0x00A40100;
+        break;
+    case 0x10000:
+        printf("0x10000 UART 1 AHB FIFO ???\n");
+        break;
+    case 0xe04c:
+        return 0xffffffff;
+        break;
+    case 0xe0c4:
+        return 0xffffffff;
+        break;
+    case 0x607c:
+        return 0xffffffff;
+        break;
+    case 0x1c018:
+        //return 0;
+        return 0x11E15054;
+        //return 0x80000000;
+        // Some difference should land between these values
+              // 0x980020c0;
+              // 0x980020b0;
+        //return   0x800000;
+        break;
+    case 0x33c00:
+        return 0x0002BBED;
+        break;
+        //return 0x01000000;
+        {
+         //static int test=0x0002BBED;
+         //printf("(qemu) %d\n",test);
+         //return (test--);
+        }
+        //return 0;
+        //return 
+    case 0x33d24:
+        return 1;
+    // case 0xe008:
+    //     return 1;
+    // case 0xe168:
+    //     return 1;
+    // case 0x1d008:
+    //     return 1;
+    }
+    if(addr < 0x100000) {
+        return(s->reg[addr]);
+    } else {
+        return 0x0;
+    }
+}
+
+extern void esp32_i2c_fifo_dataSet(int offset,unsigned int data);
+
+extern void esp32_i2c_interruptSet(qemu_irq new_irq);
+
+
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+__attribute__((unused)) static void esp_wifi_write(void *opaque, hwaddr addr,
+        uint64_t val, unsigned size)
+{
+    Esp32WifiState *s=opaque;
+
+    //printf("wifi write %" PRIx64 ",%" PRIx64 " \n",addr,val);
+
+
+    // 0x01301c
+    if (addr>=0x01301c && addr<=0x01311c) {        
+        fprintf(stdout,"i2c apb write %" PRIx64 ",%" PRIx64 " \n",addr,val);
+        //esp32_i2c_fifo_dataSet((addr-0x01301c)/4,val);
+    }
+
+
+
+    pthread_mutex_lock(&mutex);
+
+
+    if (addr==0xe004) {
+      s->i2c_block= val & 0xff;
+      s->i2c_reg= (val>>8) & 0xff;
+      //if (s->i2c_block!=0x62 && s->i2c_block!=0x67) 
+      {
+         //fprintf(stderr,"(qemu) internal i2c %02x %d\n",s->i2c_block,s->i2c_reg );
+      }
+    }
+
+
+    if (addr==0x0) {
+        // FIFO UART NUM 0 --  UART_FIFO_AHB_REG
+        // if (gdb_serial[0]->gdb_serial_connected) {
+        //     gdb_serial[0]->gdb_serial_data[gdb_serial[0]->gdb_serial_buff_tx%MAX_GDB_BUFF]=(char)val;
+        //     gdb_serial[0]->gdb_serial_buff_tx++;
+        // }
+        fprintf(stdout,"ZZZ %ld",val);
+        //uint8_t buf[1] = { val };
+        //qemu_chr_fe_write(silly_serial, buf, 1);
+
+    } else if (addr==0x10000) {
+        // FIFO UART NUM 1 --  UART_FIFO_AHB_REG
+        // if (gdb_serial[1]->gdb_serial_connected) {
+        //     gdb_serial[1]->gdb_serial_data[gdb_serial[1]->gdb_serial_buff_tx%MAX_GDB_BUFF]=(char)val;
+        //     gdb_serial[1]->gdb_serial_buff_tx++;
+        // }
+
+        fprintf(stdout,"YY %ld",val);
+    } else if (addr==0x2e000) {
+        // FIFO UART NUM 2  -- UART_FIFO_AHB_REG
+        // if (gdb_serial[2]->gdb_serial_connected) {
+        //     gdb_serial[2]->gdb_serial_data[gdb_serial[2]->gdb_serial_buff_tx%MAX_GDB_BUFF]=(char)val;
+        //     gdb_serial[2]->gdb_serial_buff_tx++;
+        // }
+        fprintf(stdout,"XX %ld",val);
+    }
+
+    pthread_mutex_unlock(&mutex);
+    if(addr < 0x100000) {
+        s->reg[addr]=val;
+    }
+}
+
+__attribute__((unused)) static uint64_t esp_phy_read(void *opaque, hwaddr addr,
+        unsigned size) 
+{
+
+    //Esp32PhyState *s=opaque;
+
+    printf("phy read %" PRIx64 " \n",addr);
+
+    return 1;
+}
+
+__attribute__((unused))static void esp_phy_write(void *opaque, hwaddr addr,
+        uint64_t val, unsigned size) 
+{
+    //Esp32PhyState *s=opaque;
+    printf("phy write %" PRIx64 ",%" PRIx64 " \n",addr,val);
+}
+__attribute__((unused))static void esp32_machine_init_wifi(Esp32SocState *ss) 
+{
+    static const MemoryRegionOps esp_wifi_ops = {
+    .read = esp_wifi_read,
+    .write = esp_wifi_write,
+    .endianness = DEVICE_NATIVE_ENDIAN,
+    };
+
+    Esp32WifiState *ws = g_malloc(sizeof(Esp32WifiState));
+
+
+    MemoryRegion* sys_mem = get_system_memory();
+
+    static MemoryRegion *wifi_io;
+    wifi_io = g_malloc(sizeof(*wifi_io));
+    memory_region_init_io(wifi_io, NULL, &esp_wifi_ops, ws, "esp32.wifi",
+                          0x80000);
+
+    memory_region_add_subregion(sys_mem, 0x60000000, wifi_io);
+
+
+
+    static const MemoryRegionOps esp_phy_ops = {
+    .read = esp_phy_read,
+    .write = esp_phy_write,
+    .endianness = DEVICE_NATIVE_ENDIAN,
+    };
+
+    Esp32PhyState *ps = g_malloc(sizeof(Esp32PhyState));
+
+    static MemoryRegion *phy_io;
+    phy_io = g_malloc(sizeof(*phy_io));
+    memory_region_init_io(phy_io, NULL, &esp_phy_ops, ps, "esp32.phy",
+                          0x1FFF);
+
+    memory_region_add_subregion(sys_mem, DR_REG_PHY_BASE, phy_io);
+
+
+}
 
 static void esp32_machine_inst_init(MachineState *machine)
 {
@@ -638,6 +1046,9 @@ static void esp32_machine_inst_init(MachineState *machine)
 
     esp32_machine_init_openeth(s);
 
+    esp32_machine_init_wifi(s);
+
+
     /* Need MMU initialized prior to ELF loading,
      * so that ELF gets loaded into virtual addresses
      */
@@ -658,7 +1069,7 @@ static void esp32_machine_inst_init(MachineState *machine)
         int success = load_elf(load_elf_filename, NULL,
                                translate_phys_addr, &s->cpu[0],
                                &elf_entry, &elf_lowaddr,
-                               NULL, NULL, 0, EM_XTENSA, 0, 0);
+                               NULL, 0, EM_XTENSA, 0, 0);
         if (success > 0) {
             s->cpu[0].env.pc = elf_entry;
         }
@@ -676,6 +1087,40 @@ static void esp32_machine_inst_init(MachineState *machine)
         }
         g_free(rom_binary);
     }
+
+
+
+        // CPUXtensaState *env = &s->cpu[0].env;
+
+        // env->pc = 0x400f55bc;
+        // env->regs[0] = 0x800f5693;
+        // env->regs[1] = 0x3ffbd2d0;
+        // env->regs[2] = 0x3ffbb59c;
+        // env->regs[3] = 0x0;
+        // env->regs[4] = 0x3ffbb5f4;
+        // env->regs[5] = 0x0;
+        // env->regs[6] = 0x0;
+        // env->regs[7] = 0x0;
+        // env->regs[8] = 0x5c;
+        // env->regs[9] = 0x3ffbd2b0;
+        // env->regs[10] = 0x5c;
+        // env->regs[11] = 0x5c;
+        // env->regs[12] = 0x80;
+        // env->regs[13] = 0x3ffbbfd4;
+        // env->regs[14] = 0x1;
+        // env->regs[15] = 0x4;
+
+
+        // char *rom_binary = qemu_find_file(QEMU_FILE_TYPE_BIOS, "/home/max/thesis/esp32_http_server/dump.bin");
+        // if (rom_binary == NULL) {
+        //     error_report("Error: -bios argument not set, and ROM code binary not found");
+        //     exit(1);
+        // }
+
+        // address_space_rw(env->address_space_er, 0x3FF80000, MEMTXATTRS_UNSPECIFIED, (uint8_t *)rom_binary, 0x80000, true);
+
+        // g_free(rom_binary);
+
 }
 
 /* Initialize machine type */

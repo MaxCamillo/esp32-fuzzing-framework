@@ -125,7 +125,7 @@ static void esp32_intmatrix_class_init(ObjectClass *klass, void *data)
 
     dc->reset = esp32_intmatrix_reset;
     dc->realize = esp32_intmatrix_realize;
-    device_class_set_props(dc, esp32_intmatrix_properties);
+    dc->props = esp32_intmatrix_properties;
 }
 
 static const TypeInfo esp32_intmatrix_info = {

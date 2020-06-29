@@ -106,9 +106,6 @@ int isa_vga_mm_init(hwaddr vram_base,
 
     s->vga.con = graphic_console_init(NULL, 0, s->vga.hw_ops, s);
 
-    memory_region_add_subregion(address_space,
-                                VBE_DISPI_LFB_PHYSICAL_ADDRESS,
-                                &s->vga.vram);
-
+    vga_init_vbe(&s->vga, NULL, address_space);
     return 0;
 }

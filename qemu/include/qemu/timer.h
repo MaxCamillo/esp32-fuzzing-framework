@@ -838,11 +838,14 @@ extern int use_rt_clock;
 
 static inline int64_t get_clock(void)
 {
+#ifdef CLOCK_MONOTONIC
     if (use_rt_clock) {
         struct timespec ts;
         clock_gettime(CLOCK_MONOTONIC, &ts);
         return ts.tv_sec * 1000000000LL + ts.tv_nsec;
-    } else {
+    } else
+#endif
+    {
         /* XXX: using gettimeofday leads to problems if the date
            changes, so it should be avoided. */
         return get_clock_realtime();

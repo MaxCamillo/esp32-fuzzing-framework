@@ -28,8 +28,6 @@
 #include "ui/egl-context.h"
 #endif
 
-#define MILLISEC_PER_SEC 1000000
-
 typedef struct GtkDisplayState GtkDisplayState;
 
 typedef struct VirtualGfxConsole {

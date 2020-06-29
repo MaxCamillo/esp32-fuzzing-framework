@@ -3076,9 +3076,7 @@ static void vfio_exitfn(PCIDevice *pdev)
     vfio_unregister_req_notifier(vdev);
     vfio_unregister_err_notifier(vdev);
     pci_device_set_intx_routing_notifier(&vdev->pdev, NULL);
-    if (vdev->irqchip_change_notifier.notify) {
-        kvm_irqchip_remove_change_notifier(&vdev->irqchip_change_notifier);
-    }
+    kvm_irqchip_remove_change_notifier(&vdev->irqchip_change_notifier);
     vfio_disable_interrupts(vdev);
     if (vdev->intx.mmap_timer) {
         timer_free(vdev->intx.mmap_timer);
@@ -3199,7 +3197,7 @@ static void vfio_pci_dev_class_init(ObjectClass *klass, void *data)
     PCIDeviceClass *pdc = PCI_DEVICE_CLASS(klass);
 
     dc->reset = vfio_pci_reset;
-    device_class_set_props(dc, vfio_pci_dev_properties);
+    dc->props = vfio_pci_dev_properties;
     dc->desc = "VFIO-based PCI device assignment";
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
     pdc->realize = vfio_realize;
@@ -3231,7 +3229,7 @@ static void vfio_pci_nohotplug_dev_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    device_class_set_props(dc, vfio_pci_dev_nohotplug_properties);
+    dc->props = vfio_pci_dev_nohotplug_properties;
     dc->hotpluggable = false;
 }
 

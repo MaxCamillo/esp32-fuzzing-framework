@@ -37,7 +37,6 @@
 #include "qemu/queue.h"
 #include "qemu/host-utils.h"
 #include "qemu/base64.h"
-#include "commands-common.h"
 
 #ifndef SHTDN_REASON_FLAG_PLANNED
 #define SHTDN_REASON_FLAG_PLANNED 0x80000000
@@ -51,11 +50,11 @@
 
 #define INVALID_SET_FILE_POINTER ((DWORD)-1)
 
-struct GuestFileHandle {
+typedef struct GuestFileHandle {
     int64_t id;
     HANDLE fh;
     QTAILQ_ENTRY(GuestFileHandle) next;
-};
+} GuestFileHandle;
 
 static struct {
     QTAILQ_HEAD(, GuestFileHandle) filehandles;
@@ -127,7 +126,7 @@ static int64_t guest_file_handle_add(HANDLE fh, Error **errp)
     return handle;
 }
 
-GuestFileHandle *guest_file_handle_find(int64_t id, Error **errp)
+static GuestFileHandle *guest_file_handle_find(int64_t id, Error **errp)
 {
     GuestFileHandle *gfh;
     QTAILQ_FOREACH(gfh, &guest_file_state.filehandles, next) {
@@ -316,25 +315,38 @@ void qmp_guest_shutdown(bool has_mode, const char *mode, Error **errp)
     }
 
     if (!ExitWindowsEx(shutdown_flag, SHTDN_REASON_FLAG_PLANNED)) {
-        g_autofree gchar *emsg = g_win32_error_message(GetLastError());
-        slog("guest-shutdown failed: %s", emsg);
-        error_setg_win32(errp, GetLastError(), "guest-shutdown failed");
+        slog("guest-shutdown failed: %lu", GetLastError());
+        error_setg(errp, QERR_UNDEFINED_ERROR);
     }
 }
 
-GuestFileRead *guest_file_read_unsafe(GuestFileHandle *gfh,
-                                      int64_t count, Error **errp)
+GuestFileRead *qmp_guest_file_read(int64_t handle, bool has_count,
+                                   int64_t count, Error **errp)
 {
     GuestFileRead *read_data = NULL;
     guchar *buf;
-    HANDLE fh = gfh->fh;
+    HANDLE fh;
     bool is_ok;
     DWORD read_count;
+    GuestFileHandle *gfh = guest_file_handle_find(handle, errp);
 
-    buf = g_malloc0(count + 1);
+    if (!gfh) {
+        return NULL;
+    }
+    if (!has_count) {
+        count = QGA_READ_COUNT_DEFAULT;
+    } else if (count < 0 || count >= UINT32_MAX) {
+        error_setg(errp, "value '%" PRId64
+                   "' is invalid for argument count", count);
+        return NULL;
+    }
+
+    fh = gfh->fh;
+    buf = g_malloc0(count+1);
     is_ok = ReadFile(fh, buf, count, &read_count, NULL);
     if (!is_ok) {
         error_setg_win32(errp, GetLastError(), "failed to read file");
+        slog("guest-file-read failed, handle %" PRId64, handle);
     } else {
         buf[read_count] = 0;
         read_data = g_new0(GuestFileRead, 1);
@@ -1307,8 +1319,7 @@ static DWORD WINAPI do_suspend(LPVOID opaque)
     DWORD ret = 0;
 
     if (!SetSuspendState(*mode == GUEST_SUSPEND_MODE_DISK, TRUE, TRUE)) {
-        g_autofree gchar *emsg = g_win32_error_message(GetLastError());
-        slog("failed to suspend guest: %s", emsg);
+        slog("failed to suspend guest, %lu", GetLastError());
         ret = -1;
     }
     g_free(mode);
@@ -1935,7 +1946,7 @@ typedef struct _GA_WTSINFOA {
 
 } GA_WTSINFOA;
 
-GuestUserList *qmp_guest_get_users(Error **errp)
+GuestUserList *qmp_guest_get_users(Error **err)
 {
 #define QGA_NANOSECONDS 10000000
 

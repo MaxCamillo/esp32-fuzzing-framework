@@ -43,11 +43,6 @@ def tesseract_available(expected_version):
 
 
 class NextCubeMachine(Test):
-    """
-    :avocado: tags=arch:m68k
-    :avocado: tags=machine:next-cube
-    :avocado: tags=device:framebuffer
-    """
 
     timeout = 15
 
@@ -57,6 +52,7 @@ class NextCubeMachine(Test):
         rom_hash = 'b3534796abae238a0111299fc406a9349f7fee24'
         rom_path = self.fetch_asset(rom_url, asset_hash=rom_hash)
 
+        self.vm.set_machine('next-cube')
         self.vm.add_args('-bios', rom_path)
         self.vm.launch()
 
@@ -70,6 +66,11 @@ class NextCubeMachine(Test):
 
     @skipUnless(PIL_AVAILABLE, 'Python PIL not installed')
     def test_bootrom_framebuffer_size(self):
+        """
+        :avocado: tags=arch:m68k
+        :avocado: tags=machine:next_cube
+        :avocado: tags=device:framebuffer
+        """
         screenshot_path = os.path.join(self.workdir, "dump.png")
         self.check_bootrom_framebuffer(screenshot_path)
 
@@ -79,6 +80,11 @@ class NextCubeMachine(Test):
 
     @skipUnless(tesseract_available(3), 'tesseract v3 OCR tool not available')
     def test_bootrom_framebuffer_ocr_with_tesseract_v3(self):
+        """
+        :avocado: tags=arch:m68k
+        :avocado: tags=machine:next_cube
+        :avocado: tags=device:framebuffer
+        """
         screenshot_path = os.path.join(self.workdir, "dump.png")
         self.check_bootrom_framebuffer(screenshot_path)
 
@@ -95,6 +101,11 @@ class NextCubeMachine(Test):
     # that it is still alpha-level software.
     @skipUnless(tesseract_available(4), 'tesseract v4 OCR tool not available')
     def test_bootrom_framebuffer_ocr_with_tesseract_v4(self):
+        """
+        :avocado: tags=arch:m68k
+        :avocado: tags=machine:next_cube
+        :avocado: tags=device:framebuffer
+        """
         screenshot_path = os.path.join(self.workdir, "dump.png")
         self.check_bootrom_framebuffer(screenshot_path)
 

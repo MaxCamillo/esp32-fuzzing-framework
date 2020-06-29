@@ -514,8 +514,7 @@ static abi_long host_to_target_data_bridge_nlattr(struct nlattr *nlattr,
         u32[1] = tswap32(u32[1]); /* optmask */
         break;
     default:
-        qemu_log_mask(LOG_UNIMP, "Unknown QEMU_IFLA_BR type %d\n",
-                      nlattr->nla_type);
+        gemu_log("Unknown QEMU_IFLA_BR type %d\n", nlattr->nla_type);
         break;
     }
     return 0;
@@ -578,8 +577,7 @@ static abi_long host_to_target_slave_data_bridge_nlattr(struct nlattr *nlattr,
     case QEMU_IFLA_BRPORT_BRIDGE_ID:
         break;
     default:
-        qemu_log_mask(LOG_UNIMP, "Unknown QEMU_IFLA_BRPORT type %d\n",
-                      nlattr->nla_type);
+        gemu_log("Unknown QEMU_IFLA_BRPORT type %d\n", nlattr->nla_type);
         break;
     }
     return 0;
@@ -607,8 +605,7 @@ static abi_long host_to_target_data_tun_nlattr(struct nlattr *nlattr,
         *u32 = tswap32(*u32);
         break;
     default:
-        qemu_log_mask(LOG_UNIMP, "Unknown QEMU_IFLA_TUN type %d\n",
-                      nlattr->nla_type);
+        gemu_log("Unknown QEMU_IFLA_TUN type %d\n", nlattr->nla_type);
         break;
     }
     return 0;
@@ -655,8 +652,7 @@ static abi_long host_to_target_data_linkinfo_nlattr(struct nlattr *nlattr,
                                                   NULL,
                                                 host_to_target_data_tun_nlattr);
         } else {
-            qemu_log_mask(LOG_UNIMP, "Unknown QEMU_IFLA_INFO_KIND %s\n",
-                          li_context->name);
+            gemu_log("Unknown QEMU_IFLA_INFO_KIND %s\n", li_context->name);
         }
         break;
     case QEMU_IFLA_INFO_SLAVE_DATA:
@@ -667,13 +663,12 @@ static abi_long host_to_target_data_linkinfo_nlattr(struct nlattr *nlattr,
                                                   NULL,
                                        host_to_target_slave_data_bridge_nlattr);
         } else {
-            qemu_log_mask(LOG_UNIMP, "Unknown QEMU_IFLA_INFO_SLAVE_KIND %s\n",
+            gemu_log("Unknown QEMU_IFLA_INFO_SLAVE_KIND %s\n",
                      li_context->slave_name);
         }
         break;
     default:
-        qemu_log_mask(LOG_UNIMP, "Unknown host QEMU_IFLA_INFO type: %d\n",
-                      nlattr->nla_type);
+        gemu_log("Unknown host QEMU_IFLA_INFO type: %d\n", nlattr->nla_type);
         break;
     }
 
@@ -695,8 +690,7 @@ static abi_long host_to_target_data_inet_nlattr(struct nlattr *nlattr,
         }
         break;
     default:
-        qemu_log_mask(LOG_UNIMP, "Unknown host AF_INET type: %d\n",
-                      nlattr->nla_type);
+        gemu_log("Unknown host AF_INET type: %d\n", nlattr->nla_type);
     }
     return 0;
 }
@@ -747,8 +741,7 @@ static abi_long host_to_target_data_inet6_nlattr(struct nlattr *nlattr,
         }
         break;
     default:
-        qemu_log_mask(LOG_UNIMP, "Unknown host AF_INET6 type: %d\n",
-                      nlattr->nla_type);
+        gemu_log("Unknown host AF_INET6 type: %d\n", nlattr->nla_type);
     }
     return 0;
 }
@@ -766,8 +759,7 @@ static abi_long host_to_target_data_spec_nlattr(struct nlattr *nlattr,
                                               NULL,
                                              host_to_target_data_inet6_nlattr);
     default:
-        qemu_log_mask(LOG_UNIMP, "Unknown host AF_SPEC type: %d\n",
-                      nlattr->nla_type);
+        gemu_log("Unknown host AF_SPEC type: %d\n", nlattr->nla_type);
         break;
     }
     return 0;
@@ -788,8 +780,7 @@ static abi_long host_to_target_data_xdp_nlattr(struct nlattr *nlattr,
         *u32 = tswap32(*u32);
         break;
     default:
-        qemu_log_mask(
-            LOG_UNIMP, "Unknown host XDP type: %d\n", nlattr->nla_type);
+        gemu_log("Unknown host XDP type: %d\n", nlattr->nla_type);
         break;
     }
     return 0;
@@ -929,8 +920,7 @@ static abi_long host_to_target_data_link_rtattr(struct rtattr *rtattr)
                                               NULL,
                                                 host_to_target_data_xdp_nlattr);
     default:
-        qemu_log_mask(LOG_UNIMP, "Unknown host QEMU_IFLA type: %d\n",
-                      rtattr->rta_type);
+        gemu_log("Unknown host QEMU_IFLA type: %d\n", rtattr->rta_type);
         break;
     }
     return 0;
@@ -964,8 +954,7 @@ static abi_long host_to_target_data_addr_rtattr(struct rtattr *rtattr)
         ci->tstamp = tswap32(ci->tstamp);
         break;
     default:
-        qemu_log_mask(
-            LOG_UNIMP, "Unknown host IFA type: %d\n", rtattr->rta_type);
+        gemu_log("Unknown host IFA type: %d\n", rtattr->rta_type);
         break;
     }
     return 0;
@@ -1007,8 +996,7 @@ static abi_long host_to_target_data_route_rtattr(struct rtattr *rtattr)
 #endif
         break;
     default:
-        qemu_log_mask(
-            LOG_UNIMP, "Unknown host RTA type: %d\n", rtattr->rta_type);
+        gemu_log("Unknown host RTA type: %d\n", rtattr->rta_type);
         break;
     }
     return 0;
@@ -1123,8 +1111,7 @@ static abi_long target_to_host_data_link_rtattr(struct rtattr *rtattr)
 {
     switch (rtattr->rta_type) {
     default:
-        qemu_log_mask(LOG_UNIMP, "Unknown target QEMU_IFLA type: %d\n",
-                      rtattr->rta_type);
+        gemu_log("Unknown target QEMU_IFLA type: %d\n", rtattr->rta_type);
         break;
     }
     return 0;
@@ -1138,8 +1125,7 @@ static abi_long target_to_host_data_addr_rtattr(struct rtattr *rtattr)
     case IFA_ADDRESS:
         break;
     default:
-        qemu_log_mask(LOG_UNIMP, "Unknown target IFA type: %d\n",
-                      rtattr->rta_type);
+        gemu_log("Unknown target IFA type: %d\n", rtattr->rta_type);
         break;
     }
     return 0;
@@ -1161,8 +1147,7 @@ static abi_long target_to_host_data_route_rtattr(struct rtattr *rtattr)
         *u32 = tswap32(*u32);
         break;
     default:
-        qemu_log_mask(LOG_UNIMP, "Unknown target RTA type: %d\n",
-                      rtattr->rta_type);
+        gemu_log("Unknown target RTA type: %d\n", rtattr->rta_type);
         break;
     }
     return 0;
@@ -1247,8 +1232,8 @@ static abi_long host_to_target_data_audit(struct nlmsghdr *nlh)
 {
     switch (nlh->nlmsg_type) {
     default:
-        qemu_log_mask(LOG_UNIMP, "Unknown host audit message type %d\n",
-                      nlh->nlmsg_type);
+        gemu_log("Unknown host audit message type %d\n",
+                 nlh->nlmsg_type);
         return -TARGET_EINVAL;
     }
     return 0;
@@ -1268,8 +1253,8 @@ static abi_long target_to_host_data_audit(struct nlmsghdr *nlh)
     case AUDIT_FIRST_USER_MSG2 ... AUDIT_LAST_USER_MSG2:
         break;
     default:
-        qemu_log_mask(LOG_UNIMP, "Unknown target audit message type %d\n",
-                      nlh->nlmsg_type);
+        gemu_log("Unknown target audit message type %d\n",
+                 nlh->nlmsg_type);
         return -TARGET_EINVAL;
     }
 

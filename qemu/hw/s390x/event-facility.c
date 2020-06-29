@@ -182,11 +182,11 @@ static void write_event_data(SCLPEventFacility *ef, SCCB *sccb)
 {
     if (sccb->h.function_code != SCLP_FC_NORMAL_WRITE) {
         sccb->h.response_code = cpu_to_be16(SCLP_RC_INVALID_FUNCTION);
-        return;
+        goto out;
     }
     if (be16_to_cpu(sccb->h.length) < 8) {
         sccb->h.response_code = cpu_to_be16(SCLP_RC_INSUFFICIENT_SCCB_LENGTH);
-        return;
+        goto out;
     }
     /* first do a sanity check of the write events */
     sccb->h.response_code = cpu_to_be16(write_event_length_check(sccb));
@@ -196,6 +196,9 @@ static void write_event_data(SCLPEventFacility *ef, SCCB *sccb)
         sccb->h.response_code =
                 cpu_to_be16(handle_sccb_write_events(ef, sccb));
     }
+
+out:
+    return;
 }
 
 static uint16_t handle_sccb_read_events(SCLPEventFacility *ef, SCCB *sccb,
@@ -259,18 +262,17 @@ static void read_event_data(SCLPEventFacility *ef, SCCB *sccb)
 
     if (be16_to_cpu(sccb->h.length) != SCCB_SIZE) {
         sccb->h.response_code = cpu_to_be16(SCLP_RC_INSUFFICIENT_SCCB_LENGTH);
-        return;
+        goto out;
     }
 
+    sclp_cp_receive_mask = ef->receive_mask;
+
+    /* get active selection mask */
     switch (sccb->h.function_code) {
     case SCLP_UNCONDITIONAL_READ:
-        sccb->h.response_code = cpu_to_be16(
-            handle_sccb_read_events(ef, sccb, ef->receive_mask));
+        sclp_active_selection_mask = sclp_cp_receive_mask;
         break;
     case SCLP_SELECTIVE_READ:
-        /* get active selection mask */
-        sclp_cp_receive_mask = ef->receive_mask;
-
         copy_mask((uint8_t *)&sclp_active_selection_mask, (uint8_t *)&red->mask,
                   sizeof(sclp_active_selection_mask), ef->mask_length);
         sclp_active_selection_mask = be64_to_cpu(sclp_active_selection_mask);
@@ -278,14 +280,18 @@ static void read_event_data(SCLPEventFacility *ef, SCCB *sccb)
             (sclp_active_selection_mask & ~sclp_cp_receive_mask)) {
             sccb->h.response_code =
                     cpu_to_be16(SCLP_RC_INVALID_SELECTION_MASK);
-        } else {
-            sccb->h.response_code = cpu_to_be16(
-                handle_sccb_read_events(ef, sccb, sclp_active_selection_mask));
+            goto out;
         }
         break;
     default:
         sccb->h.response_code = cpu_to_be16(SCLP_RC_INVALID_FUNCTION);
+        goto out;
     }
+    sccb->h.response_code = cpu_to_be16(
+            handle_sccb_read_events(ef, sccb, sclp_active_selection_mask));
+
+out:
+    return;
 }
 
 static void write_event_mask(SCLPEventFacility *ef, SCCB *sccb)
@@ -297,7 +303,7 @@ static void write_event_mask(SCLPEventFacility *ef, SCCB *sccb)
     if (!mask_length || (mask_length > SCLP_EVENT_MASK_LEN_MAX) ||
         ((mask_length != 4) && !ef->allow_all_mask_sizes)) {
         sccb->h.response_code = cpu_to_be16(SCLP_RC_INVALID_MASK_LENGTH);
-        return;
+        goto out;
     }
 
     /*
@@ -322,6 +328,9 @@ static void write_event_mask(SCLPEventFacility *ef, SCCB *sccb)
 
     sccb->h.response_code = cpu_to_be16(SCLP_RC_NORMAL_COMPLETION);
     ef->mask_length = mask_length;
+
+out:
+    return;
 }
 
 /* qemu object creation and initialization functions */
@@ -330,16 +339,14 @@ static void write_event_mask(SCLPEventFacility *ef, SCCB *sccb)
 
 static void sclp_events_bus_realize(BusState *bus, Error **errp)
 {
-    Error *err = NULL;
     BusChild *kid;
 
     /* TODO: recursive realization has to be done in common code */
     QTAILQ_FOREACH(kid, &bus->children, sibling) {
         DeviceState *dev = kid->child;
 
-        object_property_set_bool(OBJECT(dev), true, "realized", &err);
-        if (err) {
-            error_propagate(errp, err);
+        object_property_set_bool(OBJECT(dev), true, "realized", errp);
+        if (*errp) {
             return;
         }
     }
@@ -432,7 +439,7 @@ static void sclp_event_set_allow_all_mask_sizes(Object *obj, bool value,
     ef->allow_all_mask_sizes = value;
 }
 
-static bool sclp_event_get_allow_all_mask_sizes(Object *obj, Error **errp)
+static bool sclp_event_get_allow_all_mask_sizes(Object *obj, Error **e)
 {
     SCLPEventFacility *ef = (SCLPEventFacility *)obj;
 

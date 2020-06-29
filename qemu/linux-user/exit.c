@@ -18,7 +18,7 @@
  */
 #include "qemu/osdep.h"
 #include "qemu.h"
-#ifdef CONFIG_GPROF
+#ifdef TARGET_GPROF
 #include <sys/gmon.h>
 #endif
 
@@ -28,7 +28,7 @@ extern void __gcov_dump(void);
 
 void preexit_cleanup(CPUArchState *env, int code)
 {
-#ifdef CONFIG_GPROF
+#ifdef TARGET_GPROF
         _mcleanup();
 #endif
 #ifdef CONFIG_GCOV

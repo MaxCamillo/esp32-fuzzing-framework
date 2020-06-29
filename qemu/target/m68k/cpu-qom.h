@@ -44,7 +44,7 @@ typedef struct M68kCPUClass {
     /*< public >*/
 
     DeviceRealize parent_realize;
-    DeviceReset parent_reset;
+    void (*parent_reset)(CPUState *cpu);
 } M68kCPUClass;
 
 typedef struct M68kCPU M68kCPU;

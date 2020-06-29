@@ -325,7 +325,7 @@ static void vhost_vsock_device_realize(DeviceState *dev, Error **errp)
     } else {
         vhostfd = open("/dev/vhost-vsock", O_RDWR);
         if (vhostfd < 0) {
-            error_setg_errno(errp, errno,
+            error_setg_errno(errp, -errno,
                              "vhost-vsock: failed to open vhost device");
             return;
         }
@@ -335,10 +335,8 @@ static void vhost_vsock_device_realize(DeviceState *dev, Error **errp)
                 sizeof(struct virtio_vsock_config));
 
     /* Receive and transmit queues belong to vhost */
-    vsock->recv_vq = virtio_add_queue(vdev, VHOST_VSOCK_QUEUE_SIZE,
-                                      vhost_vsock_handle_output);
-    vsock->trans_vq = virtio_add_queue(vdev, VHOST_VSOCK_QUEUE_SIZE,
-                                       vhost_vsock_handle_output);
+    virtio_add_queue(vdev, VHOST_VSOCK_QUEUE_SIZE, vhost_vsock_handle_output);
+    virtio_add_queue(vdev, VHOST_VSOCK_QUEUE_SIZE, vhost_vsock_handle_output);
 
     /* The event queue belongs to QEMU */
     vsock->event_vq = virtio_add_queue(vdev, VHOST_VSOCK_QUEUE_SIZE,
@@ -364,16 +362,9 @@ static void vhost_vsock_device_realize(DeviceState *dev, Error **errp)
 
 err_vhost_dev:
     vhost_dev_cleanup(&vsock->vhost_dev);
-    /* vhost_dev_cleanup() closes the vhostfd passed to vhost_dev_init() */
-    vhostfd = -1;
 err_virtio:
-    virtio_delete_queue(vsock->recv_vq);
-    virtio_delete_queue(vsock->trans_vq);
-    virtio_delete_queue(vsock->event_vq);
     virtio_cleanup(vdev);
-    if (vhostfd >= 0) {
-        close(vhostfd);
-    }
+    close(vhostfd);
     return;
 }
 
@@ -388,9 +379,6 @@ static void vhost_vsock_device_unrealize(DeviceState *dev, Error **errp)
     vhost_vsock_set_status(vdev, 0);
 
     vhost_dev_cleanup(&vsock->vhost_dev);
-    virtio_delete_queue(vsock->recv_vq);
-    virtio_delete_queue(vsock->trans_vq);
-    virtio_delete_queue(vsock->event_vq);
     virtio_cleanup(vdev);
 }
 
@@ -405,7 +393,7 @@ static void vhost_vsock_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     VirtioDeviceClass *vdc = VIRTIO_DEVICE_CLASS(klass);
 
-    device_class_set_props(dc, vhost_vsock_properties);
+    dc->props = vhost_vsock_properties;
     dc->vmsd = &vmstate_virtio_vhost_vsock;
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
     vdc->realize = vhost_vsock_device_realize;

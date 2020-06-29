@@ -24,7 +24,6 @@ typedef struct AspeedSDHCIState {
     SysBusDevice parent;
 
     SDHCIState slots[ASPEED_SDHCI_NUM_SLOTS];
-    uint8_t num_slots;
 
     MemoryRegion iomem;
     qemu_irq irq;

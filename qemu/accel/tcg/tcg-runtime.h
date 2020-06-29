@@ -305,3 +305,8 @@ DEF_HELPER_FLAGS_4(gvec_leu32, TCG_CALL_NO_RWG, void, ptr, ptr, ptr, i32)
 DEF_HELPER_FLAGS_4(gvec_leu64, TCG_CALL_NO_RWG, void, ptr, ptr, ptr, i32)
 
 DEF_HELPER_FLAGS_5(gvec_bitsel, TCG_CALL_NO_RWG, void, ptr, ptr, ptr, ptr, i32)
+
+DEF_HELPER_FLAGS_3(hfuzz_qemu_trace_cmp_i64, TCG_CALL_NO_RWG,
+                   void, i64, i64, i64)
+DEF_HELPER_FLAGS_3(hfuzz_qemu_trace_cmp_i32, TCG_CALL_NO_RWG,
+                   void, i32, i32, i32)

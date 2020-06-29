@@ -28,8 +28,7 @@ status=1
 _cleanup()
 {
     _cleanup_test_img
-    _rm_test_img "$TEST_IMG.out"
-    _rm_test_img "$TEST_IMG.out.dd"
+    rm -f "$TEST_IMG.out" "$TEST_IMG.out.dd"
 }
 trap "_cleanup; exit \$status" 0 1 2 3 15
 

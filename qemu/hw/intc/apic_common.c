@@ -268,10 +268,7 @@ static void apic_common_realize(DeviceState *dev, Error **errp)
     APICCommonState *s = APIC_COMMON(dev);
     APICCommonClass *info;
     static DeviceState *vapic;
-    uint32_t instance_id = s->initial_apic_id;
-
-    /* Normally initial APIC ID should be no more than hundreds */
-    assert(instance_id != VMSTATE_INSTANCE_ID_ANY);
+    int instance_id = s->id;
 
     info = APIC_COMMON_GET_CLASS(s);
     info->realize(dev, errp);
@@ -287,7 +284,7 @@ static void apic_common_realize(DeviceState *dev, Error **errp)
     }
 
     if (s->legacy_instance_id) {
-        instance_id = VMSTATE_INSTANCE_ID_ANY;
+        instance_id = -1;
     }
     vmstate_register_with_alias_id(NULL, instance_id, &vmstate_apic_common,
                                    s, -1, 0, NULL);
@@ -453,7 +450,7 @@ static void apic_common_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->reset = apic_reset_common;
-    device_class_set_props(dc, apic_properties_common);
+    dc->props = apic_properties_common;
     dc->realize = apic_common_realize;
     dc->unrealize = apic_common_unrealize;
     /*

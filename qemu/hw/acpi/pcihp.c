@@ -80,8 +80,7 @@ static void *acpi_set_bsel(PCIBus *bus, void *opaque)
 
         *bus_bsel = (*bsel_alloc)++;
         object_property_add_uint32_ptr(OBJECT(bus), ACPI_PCIHP_PROP_BSEL,
-                                       bus_bsel, OBJ_PROP_FLAG_READ,
-                                       &error_abort);
+                                       bus_bsel, &error_abort);
     }
 
     return bsel_alloc;
@@ -154,7 +153,7 @@ static void acpi_pcihp_eject_slot(AcpiPciHpState *s, unsigned bsel, unsigned slo
 
     trace_acpi_pci_eject_slot(bsel, slot);
 
-    if (!bus || slot > 31) {
+    if (!bus) {
         return;
     }
 
@@ -374,9 +373,9 @@ void acpi_pcihp_init(Object *owner, AcpiPciHpState *s, PCIBus *root_bus,
     memory_region_add_subregion(address_space_io, s->io_base, &s->io);
 
     object_property_add_uint16_ptr(owner, ACPI_PCIHP_IO_BASE_PROP, &s->io_base,
-                                   OBJ_PROP_FLAG_READ, &error_abort);
+                                   &error_abort);
     object_property_add_uint16_ptr(owner, ACPI_PCIHP_IO_LEN_PROP, &s->io_len,
-                                   OBJ_PROP_FLAG_READ, &error_abort);
+                                   &error_abort);
 }
 
 const VMStateDescription vmstate_acpi_pcihp_pci_status = {

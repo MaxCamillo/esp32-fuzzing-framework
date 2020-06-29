@@ -1060,15 +1060,6 @@ static int net_client_init1(const void *object, bool is_netdev, Error **errp)
         }
         return -1;
     }
-
-    if (is_netdev) {
-        NetClientState *nc;
-
-        nc = qemu_find_netdev(netdev->id);
-        assert(nc);
-        nc->is_netdev = true;
-    }
-
     return 0;
 }
 
@@ -1135,13 +1126,16 @@ static int net_client_init(QemuOpts *opts, bool is_netdev, Error **errp)
 
             prefix_addr = substrings[0];
 
-            /* Handle user-specified prefix length. */
-            if (substrings[1] &&
-                qemu_strtoul(substrings[1], NULL, 10, &prefix_len))
-            {
-                error_setg(errp, QERR_INVALID_PARAMETER_VALUE,
-                           "ipv6-prefixlen", "a number");
-                goto out;
+            if (substrings[1]) {
+                /* User-specified prefix length.  */
+                int err;
+
+                err = qemu_strtoul(substrings[1], NULL, 10, &prefix_len);
+                if (err) {
+                    error_setg(errp, QERR_INVALID_PARAMETER_VALUE,
+                               "ipv6-prefixlen", "a number");
+                    goto out;
+                }
             }
 
             qemu_opt_set(opts, "ipv6-prefix", prefix_addr, &error_abort);
@@ -1179,14 +1173,36 @@ void netdev_add(QemuOpts *opts, Error **errp)
     net_client_init(opts, true, errp);
 }
 
-void qmp_netdev_add(Netdev *netdev, Error **errp)
+void qmp_netdev_add(QDict *qdict, QObject **ret, Error **errp)
 {
-    net_client_init1(netdev, true, errp);
+    Error *local_err = NULL;
+    QemuOptsList *opts_list;
+    QemuOpts *opts;
+
+    opts_list = qemu_find_opts_err("netdev", &local_err);
+    if (local_err) {
+        goto out;
+    }
+
+    opts = qemu_opts_from_qdict(opts_list, qdict, &local_err);
+    if (local_err) {
+        goto out;
+    }
+
+    netdev_add(opts, &local_err);
+    if (local_err) {
+        qemu_opts_del(opts);
+        goto out;
+    }
+
+out:
+    error_propagate(errp, local_err);
 }
 
 void qmp_netdev_del(const char *id, Error **errp)
 {
     NetClientState *nc;
+    QemuOpts *opts;
 
     nc = qemu_find_netdev(id);
     if (!nc) {
@@ -1195,12 +1211,14 @@ void qmp_netdev_del(const char *id, Error **errp)
         return;
     }
 
-    if (!nc->is_netdev) {
+    opts = qemu_opts_find(qemu_find_opts_err("netdev", NULL), id);
+    if (!opts) {
         error_setg(errp, "Device '%s' is not a netdev", id);
         return;
     }
 
     qemu_del_net_client(nc);
+    qemu_opts_del(opts);
 }
 
 static void netfilter_print_info(Monitor *mon, NetFilterState *nf)

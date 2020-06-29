@@ -11,7 +11,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/units.h"
 #include "guest-agent-core.h"
 #include "qga-qapi-commands.h"
 #include "qapi/error.h"
@@ -19,18 +18,11 @@
 #include "qemu/base64.h"
 #include "qemu/cutils.h"
 #include "qemu/atomic.h"
-#include "commands-common.h"
 
 /* Maximum captured guest-exec out_data/err_data - 16MB */
 #define GUEST_EXEC_MAX_OUTPUT (16*1024*1024)
 /* Allocation and I/O buffer for reading guest-exec out_data/err_data - 4KB */
 #define GUEST_EXEC_IO_SIZE (4*1024)
-/*
- * Maximum file size to read - 48MB
- *
- * (48MB + Base64 3:4 overhead = JSON parser 64 MB limit)
- */
-#define GUEST_FILE_READ_COUNT_MAX (48 * MiB)
 
 /* Note: in some situations, like with the fsfreeze, logging may be
  * temporarilly disabled. if it is necessary that a command be able
@@ -62,7 +54,7 @@ void qmp_guest_ping(Error **errp)
     slog("guest-ping called");
 }
 
-static void qmp_command_info(const QmpCommand *cmd, void *opaque)
+static void qmp_command_info(QmpCommand *cmd, void *opaque)
 {
     GuestAgentInfo *info = opaque;
     GuestAgentCommandInfo *cmd_info;
@@ -151,7 +143,7 @@ static GuestExecInfo *guest_exec_info_find(int64_t pid_numeric)
     return NULL;
 }
 
-GuestExecStatus *qmp_guest_exec_status(int64_t pid, Error **errp)
+GuestExecStatus *qmp_guest_exec_status(int64_t pid, Error **err)
 {
     GuestExecInfo *gei;
     GuestExecStatus *ges;
@@ -160,7 +152,7 @@ GuestExecStatus *qmp_guest_exec_status(int64_t pid, Error **errp)
 
     gei = guest_exec_info_find(pid);
     if (gei == NULL) {
-        error_setg(errp, QERR_INVALID_PARAMETER, "pid");
+        error_setg(err, QERR_INVALID_PARAMETER, "pid");
         return NULL;
     }
 
@@ -393,7 +385,7 @@ GuestExec *qmp_guest_exec(const char *path,
                        bool has_env, strList *env,
                        bool has_input_data, const char *input_data,
                        bool has_capture_output, bool capture_output,
-                       Error **errp)
+                       Error **err)
 {
     GPid pid;
     GuestExec *ge = NULL;
@@ -413,7 +405,7 @@ GuestExec *qmp_guest_exec(const char *path,
     arglist.next = has_arg ? arg : NULL;
 
     if (has_input_data) {
-        input = qbase64_decode(input_data, -1, &ninput, errp);
+        input = qbase64_decode(input_data, -1, &ninput, err);
         if (!input) {
             return NULL;
         }
@@ -432,7 +424,7 @@ GuestExec *qmp_guest_exec(const char *path,
             guest_exec_task_setup, NULL, &pid, has_input_data ? &in_fd : NULL,
             has_output ? &out_fd : NULL, has_output ? &err_fd : NULL, &gerr);
     if (!ret) {
-        error_setg(errp, QERR_QGA_COMMAND_FAILED, gerr->message);
+        error_setg(err, QERR_QGA_COMMAND_FAILED, gerr->message);
         g_error_free(gerr);
         goto done;
     }
@@ -490,15 +482,10 @@ done:
  * the guest's SEEK_ constants.  */
 int ga_parse_whence(GuestFileWhence *whence, Error **errp)
 {
-    /*
-     * Exploit the fact that we picked values to match QGA_SEEK_*;
-     * however, we have to use a temporary variable since the union
-     * members may have different size.
-     */
+    /* Exploit the fact that we picked values to match QGA_SEEK_*. */
     if (whence->type == QTYPE_QSTRING) {
-        int value = whence->u.name;
         whence->type = QTYPE_QNUM;
-        whence->u.value = value;
+        whence->u.value = whence->u.name;
     }
     switch (whence->u.value) {
     case QGA_SEEK_SET:
@@ -512,7 +499,7 @@ int ga_parse_whence(GuestFileWhence *whence, Error **errp)
     return -1;
 }
 
-GuestHostName *qmp_guest_get_host_name(Error **errp)
+GuestHostName *qmp_guest_get_host_name(Error **err)
 {
     GuestHostName *result = NULL;
     gchar const *hostname = g_get_host_name();
@@ -554,29 +541,4 @@ GuestTimezone *qmp_guest_get_timezone(Error **errp)
 error:
     g_free(info);
     return NULL;
-}
-
-GuestFileRead *qmp_guest_file_read(int64_t handle, bool has_count,
-                                   int64_t count, Error **errp)
-{
-    GuestFileHandle *gfh = guest_file_handle_find(handle, errp);
-    GuestFileRead *read_data;
-
-    if (!gfh) {
-        return NULL;
-    }
-    if (!has_count) {
-        count = QGA_READ_COUNT_DEFAULT;
-    } else if (count < 0 || count > GUEST_FILE_READ_COUNT_MAX) {
-        error_setg(errp, "value '%" PRId64 "' is invalid for argument count",
-                   count);
-        return NULL;
-    }
-
-    read_data = guest_file_read_unsafe(gfh, count, errp);
-    if (!read_data) {
-        slog("guest-file-write failed, handle: %" PRId64, handle);
-    }
-
-    return read_data;
 }

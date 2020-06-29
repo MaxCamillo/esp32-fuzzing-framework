@@ -16,7 +16,6 @@ config I82378
 config ISA_SUPERIO
     bool
     select ISA_BUS
-    select PCKBD
 
 config PC87312
     bool

@@ -19,9 +19,8 @@ exit
 
 [ $# -ge 3 ] && FREQ="$3"
 mkdir -p "$TARGET"
-tar -xf "$OVERLAY" -C "$TARGET" --strip-components=2 \
-    xtensa/config/core-isa.h \
-    xtensa/config/core-matmap.h
+tar -xf "$OVERLAY" -C "$TARGET" --strip-components=1 \
+    --xform='s/core/core-isa/' config/core.h
 tar -xf "$OVERLAY" -O gdb/xtensa-config.c | \
     sed -n '1,/*\//p;/XTREG/,/XTREG_END/p' > "$TARGET"/gdb-config.inc.c
 #
@@ -45,7 +44,6 @@ cat <<EOF > "${TARGET}.c"
 #include "qemu/host-utils.h"
 
 #include "core-$NAME/core-isa.h"
-#include "core-$NAME/core-matmap.h"
 #include "overlay_tool.h"
 
 #define xtensa_modules xtensa_modules_$NAME

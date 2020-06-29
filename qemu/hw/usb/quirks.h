@@ -21,23 +21,19 @@
 #include "quirks-pl2303-ids.h"
 
 struct usb_device_id {
-    uint16_t vendor_id;
-    uint16_t product_id;
-    uint8_t interface_class;
-    uint8_t interface_subclass;
-    uint8_t interface_protocol;
-    uint8_t interface_protocol_used:1,
-            terminating_entry:1,
-            reserved:6;
+    int vendor_id;
+    int product_id;
+    int interface_class;
+    int interface_subclass;
+    int interface_protocol;
 };
 
 #define USB_DEVICE(vendor, product) \
-    .vendor_id = vendor, .product_id = product, .interface_protocol_used = 0,
+    .vendor_id = vendor, .product_id = product, .interface_class = -1,
 
 #define USB_DEVICE_AND_INTERFACE_INFO(vend, prod, iclass, isubclass, iproto) \
     .vendor_id = vend, .product_id = prod, .interface_class = iclass, \
-    .interface_subclass = isubclass, .interface_protocol = iproto, \
-    .interface_protocol_used = 1
+    .interface_subclass = isubclass, .interface_protocol = iproto
 
 static const struct usb_device_id usbredir_raw_serial_ids[] = {
     /*
@@ -210,7 +206,7 @@ static const struct usb_device_id usbredir_raw_serial_ids[] = {
     { USB_DEVICE(ADLINK_VENDOR_ID, ADLINK_ND6530_PRODUCT_ID) },
     { USB_DEVICE(SMART_VENDOR_ID, SMART_PRODUCT_ID) },
 
-    { .terminating_entry = 1 } /* Terminating Entry */
+    { USB_DEVICE(-1, -1) } /* Terminating Entry */
 };
 
 static const struct usb_device_id usbredir_ftdi_serial_ids[] = {
@@ -910,7 +906,7 @@ static const struct usb_device_id usbredir_ftdi_serial_ids[] = {
     { USB_DEVICE(FTDI_VID, FTDI_DISTORTEC_JTAG_LOCK_PICK_PID) },
     { USB_DEVICE(FTDI_VID, FTDI_LUMEL_PD12_PID) },
 
-    { .terminating_entry = 1 } /* Terminating Entry */
+    { USB_DEVICE(-1, -1) } /* Terminating Entry */
 };
 
 #undef USB_DEVICE

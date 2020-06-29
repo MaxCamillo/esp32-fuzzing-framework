@@ -54,7 +54,6 @@ static void pci_ipmi_lower_irq(IPMIKCS *ik)
 
 static void pci_ipmi_kcs_realize(PCIDevice *pd, Error **errp)
 {
-    Error *err = NULL;
     PCIIPMIKCSDevice *pik = PCI_IPMI_KCS(pd);
     IPMIInterface *ii = IPMI_INTERFACE(pd);
     IPMIInterfaceClass *iic = IPMI_INTERFACE_GET_CLASS(ii);
@@ -75,9 +74,8 @@ static void pci_ipmi_kcs_realize(PCIDevice *pd, Error **errp)
     pik->kcs.raise_irq = pci_ipmi_raise_irq;
     pik->kcs.lower_irq = pci_ipmi_lower_irq;
 
-    iic->init(ii, 8, &err);
-    if (err) {
-        error_propagate(errp, err);
+    iic->init(ii, 8, errp);
+    if (*errp) {
         return;
     }
     pci_register_bar(pd, 0, PCI_BASE_ADDRESS_SPACE_IO, &pik->kcs.io);

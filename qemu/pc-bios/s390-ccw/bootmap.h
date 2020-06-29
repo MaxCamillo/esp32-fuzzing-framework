@@ -136,7 +136,7 @@ typedef struct BootMapScriptHeader {
 
 typedef struct BootMapScript {
     BootMapScriptHeader header;
-    BootMapScriptEntry  entry[];
+    BootMapScriptEntry  entry[0];
 } __attribute__ ((packed)) BootMapScript;
 
 /*

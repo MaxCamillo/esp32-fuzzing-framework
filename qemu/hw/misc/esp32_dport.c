@@ -325,7 +325,7 @@ static void esp32_dport_reset(DeviceState *dev)
     s->cache_ill_trap_en_reg = 0;
     esp32_cache_reset(&s->cache_state[0]);
     esp32_cache_reset(&s->cache_state[1]);
-    device_cold_reset(DEVICE(&s->intmatrix));
+    device_reset(DEVICE(&s->intmatrix));
     qemu_irq_lower(s->appcpu_stall_req);
 }
 
@@ -419,7 +419,7 @@ static void esp32_dport_class_init(ObjectClass *klass, void *data)
 
     dc->reset = esp32_dport_reset;
     dc->realize = esp32_dport_realize;
-    device_class_set_props(dc, esp32_dport_properties);
+    dc->props = esp32_dport_properties;
 }
 
 static const TypeInfo esp32_dport_info = {

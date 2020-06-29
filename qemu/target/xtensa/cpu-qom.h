@@ -56,7 +56,7 @@ typedef struct XtensaCPUClass {
     /*< public >*/
 
     DeviceRealize parent_realize;
-    DeviceReset parent_reset;
+    void (*parent_reset)(CPUState *cpu);
 
     const XtensaConfig *config;
 } XtensaCPUClass;

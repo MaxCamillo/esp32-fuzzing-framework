@@ -273,6 +273,7 @@ static void a9_daughterboard_init(const VexpressMachineState *vms,
 {
     MachineState *machine = MACHINE(vms);
     MemoryRegion *sysmem = get_system_memory();
+    MemoryRegion *ram = g_new(MemoryRegion, 1);
     MemoryRegion *lowram = g_new(MemoryRegion, 1);
     ram_addr_t low_ram_size;
 
@@ -282,6 +283,8 @@ static void a9_daughterboard_init(const VexpressMachineState *vms,
         exit(1);
     }
 
+    memory_region_allocate_system_memory(ram, NULL, "vexpress.highmem",
+                                         ram_size);
     low_ram_size = ram_size;
     if (low_ram_size > 0x4000000) {
         low_ram_size = 0x4000000;
@@ -290,10 +293,9 @@ static void a9_daughterboard_init(const VexpressMachineState *vms,
      * address space should in theory be remappable to various
      * things including ROM or RAM; we always map the RAM there.
      */
-    memory_region_init_alias(lowram, NULL, "vexpress.lowmem", machine->ram,
-                             0, low_ram_size);
+    memory_region_init_alias(lowram, NULL, "vexpress.lowmem", ram, 0, low_ram_size);
     memory_region_add_subregion(sysmem, 0x0, lowram);
-    memory_region_add_subregion(sysmem, 0x60000000, machine->ram);
+    memory_region_add_subregion(sysmem, 0x60000000, ram);
 
     /* 0x1e000000 A9MPCore (SCU) private memory region */
     init_cpus(machine, cpu_type, TYPE_A9MPCORE_PRIV, 0x1e000000, pic,
@@ -358,6 +360,7 @@ static void a15_daughterboard_init(const VexpressMachineState *vms,
 {
     MachineState *machine = MACHINE(vms);
     MemoryRegion *sysmem = get_system_memory();
+    MemoryRegion *ram = g_new(MemoryRegion, 1);
     MemoryRegion *sram = g_new(MemoryRegion, 1);
 
     {
@@ -372,8 +375,10 @@ static void a15_daughterboard_init(const VexpressMachineState *vms,
         }
     }
 
+    memory_region_allocate_system_memory(ram, NULL, "vexpress.highmem",
+                                         ram_size);
     /* RAM is from 0x80000000 upwards; there is no low-memory alias for it. */
-    memory_region_add_subregion(sysmem, 0x80000000, machine->ram);
+    memory_region_add_subregion(sysmem, 0x80000000, ram);
 
     /* 0x2c000000 A15MPCore private memory region (GIC) */
     init_cpus(machine, cpu_type, TYPE_A15MPCORE_PRIV,
@@ -790,7 +795,6 @@ static void vexpress_class_init(ObjectClass *oc, void *data)
     mc->init = vexpress_common_init;
     mc->max_cpus = 4;
     mc->ignore_memory_transaction_failures = true;
-    mc->default_ram_id = "vexpress.highmem";
 }
 
 static void vexpress_a9_class_init(ObjectClass *oc, void *data)

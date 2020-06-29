@@ -49,11 +49,14 @@ int use_rt_clock;
 
 static void __attribute__((constructor)) init_get_clock(void)
 {
-    struct timespec ts;
-
     use_rt_clock = 0;
-    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
-        use_rt_clock = 1;
+#ifdef CLOCK_MONOTONIC
+    {
+        struct timespec ts;
+        if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
+            use_rt_clock = 1;
+        }
     }
+#endif
 }
 #endif

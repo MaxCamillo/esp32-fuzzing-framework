@@ -3,16 +3,9 @@
 
 /* A small part of this API is split into its own header */
 #include "qemu/log-for-trace.h"
-#include "qemu/rcu.h"
-
-typedef struct QemuLogFile {
-    struct rcu_head rcu;
-    FILE *fd;
-} QemuLogFile;
 
 /* Private global variable, don't use */
-extern QemuLogFile *qemu_logfile;
-
+extern FILE *qemu_logfile;
 
 /* 
  * The new API:
@@ -32,16 +25,7 @@ static inline bool qemu_log_enabled(void)
  */
 static inline bool qemu_log_separate(void)
 {
-    QemuLogFile *logfile;
-    bool res = false;
-
-    rcu_read_lock();
-    logfile = atomic_rcu_read(&qemu_logfile);
-    if (logfile && logfile->fd != stderr) {
-        res = true;
-    }
-    rcu_read_unlock();
-    return res;
+    return qemu_logfile != NULL && qemu_logfile != stderr;
 }
 
 #define CPU_LOG_TB_OUT_ASM (1 << 0)
@@ -62,8 +46,6 @@ static inline bool qemu_log_separate(void)
 #define CPU_LOG_TB_OP_IND  (1 << 16)
 #define CPU_LOG_TB_FPU     (1 << 17)
 #define CPU_LOG_PLUGIN     (1 << 18)
-/* LOG_STRACE is used for user-mode strace logging. */
-#define LOG_STRACE         (1 << 19)
 
 /* Lock output for a series of related logs.  Since this is not needed
  * for a single qemu_log / qemu_log_mask / qemu_log_mask_and_addr, we
@@ -71,25 +53,14 @@ static inline bool qemu_log_separate(void)
  * qemu_loglevel is never set when qemu_logfile is unset.
  */
 
-static inline FILE *qemu_log_lock(void)
+static inline void qemu_log_lock(void)
 {
-    QemuLogFile *logfile;
-    rcu_read_lock();
-    logfile = atomic_rcu_read(&qemu_logfile);
-    if (logfile) {
-        qemu_flockfile(logfile->fd);
-        return logfile->fd;
-    } else {
-        return NULL;
-    }
+    qemu_flockfile(qemu_logfile);
 }
 
-static inline void qemu_log_unlock(FILE *fd)
+static inline void qemu_log_unlock(void)
 {
-    if (fd) {
-        qemu_funlockfile(fd);
-    }
-    rcu_read_unlock();
+    qemu_funlockfile(qemu_logfile);
 }
 
 /* Logging functions: */
@@ -99,14 +70,9 @@ static inline void qemu_log_unlock(FILE *fd)
 static inline void GCC_FMT_ATTR(1, 0)
 qemu_log_vprintf(const char *fmt, va_list va)
 {
-    QemuLogFile *logfile;
-
-    rcu_read_lock();
-    logfile = atomic_rcu_read(&qemu_logfile);
-    if (logfile) {
-        vfprintf(logfile->fd, fmt, va);
+    if (qemu_logfile) {
+        vfprintf(qemu_logfile, fmt, va);
     }
-    rcu_read_unlock();
 }
 
 /* log only if a bit is set on the current loglevel mask:

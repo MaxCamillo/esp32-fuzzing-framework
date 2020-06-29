@@ -347,7 +347,7 @@ typedef struct ChscResp {
     uint16_t len;
     uint16_t code;
     uint32_t param;
-    char data[];
+    char data[0];
 } QEMU_PACKED ChscResp;
 
 #define CHSC_MIN_RESP_LEN 0x0008

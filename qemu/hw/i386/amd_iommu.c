@@ -181,7 +181,7 @@ static void amdvi_log_event(AMDVIState *s, uint64_t *evt)
     }
 
     if (dma_memory_write(&address_space_memory, s->evtlog + s->evtlog_tail,
-                         evt, AMDVI_EVENT_LEN)) {
+        &evt, AMDVI_EVENT_LEN)) {
         trace_amdvi_evntlog_fail(s->evtlog, s->evtlog_tail);
     }
 
@@ -1533,7 +1533,7 @@ static void amdvi_reset(DeviceState *dev)
     amdvi_init(s);
 }
 
-static void amdvi_realize(DeviceState *dev, Error **errp)
+static void amdvi_realize(DeviceState *dev, Error **err)
 {
     int ret = 0;
     AMDVIState *s = AMD_IOMMU_DEVICE(dev);
@@ -1549,21 +1549,21 @@ static void amdvi_realize(DeviceState *dev, Error **errp)
     /* This device should take care of IOMMU PCI properties */
     x86_iommu->type = TYPE_AMD;
     qdev_set_parent_bus(DEVICE(&s->pci), &bus->qbus);
-    object_property_set_bool(OBJECT(&s->pci), true, "realized", errp);
+    object_property_set_bool(OBJECT(&s->pci), true, "realized", err);
     ret = pci_add_capability(&s->pci.dev, AMDVI_CAPAB_ID_SEC, 0,
-                                         AMDVI_CAPAB_SIZE, errp);
+                                         AMDVI_CAPAB_SIZE, err);
     if (ret < 0) {
         return;
     }
     s->capab_offset = ret;
 
     ret = pci_add_capability(&s->pci.dev, PCI_CAP_ID_MSI, 0,
-                             AMDVI_CAPAB_REG_SIZE, errp);
+                             AMDVI_CAPAB_REG_SIZE, err);
     if (ret < 0) {
         return;
     }
     ret = pci_add_capability(&s->pci.dev, PCI_CAP_ID_HT, 0,
-                             AMDVI_CAPAB_REG_SIZE, errp);
+                             AMDVI_CAPAB_REG_SIZE, err);
     if (ret < 0) {
         return;
     }
@@ -1578,8 +1578,8 @@ static void amdvi_realize(DeviceState *dev, Error **errp)
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
     sysbus_mmio_map(SYS_BUS_DEVICE(s), 0, AMDVI_BASE_ADDR);
     pci_setup_iommu(bus, amdvi_host_dma_iommu, s);
-    s->devid = object_property_get_int(OBJECT(&s->pci), "addr", errp);
-    msi_init(&s->pci.dev, 0, 1, true, false, errp);
+    s->devid = object_property_get_int(OBJECT(&s->pci), "addr", err);
+    msi_init(&s->pci.dev, 0, 1, true, false, err);
     amdvi_init(s);
 }
 

@@ -88,12 +88,6 @@ The @emph{one} @{and only@}
 @item @code{two}
 Not documented
 @end table
-
-@b{Features:}
-@table @asis
-@item @code{enum-feat}
-Also @emph{one} @{and only@}
-@end table
 @code{two} is undocumented
 
 @b{If:} @code{defined(IFCOND)}
@@ -132,8 +126,6 @@ Not documented
 @table @asis
 @item @code{variant1-feat}
 a feature
-@item @code{member-feat}
-a member feature
 @end table
 
 @end deftp
@@ -159,12 +151,6 @@ a member feature
 @item The members of @code{Variant2} when @code{base1} is @t{"two"} (@b{If:} @code{IFTWO})
 @end table
 
-@b{Features:}
-@table @asis
-@item @code{union-feat1}
-a feature
-@end table
-
 @end deftp
 
 
@@ -179,12 +165,6 @@ a feature
 One of @t{"one"}, @t{"two"}
 @item @code{data: Variant1} when @code{type} is @t{"one"}
 @item @code{data: Variant2} when @code{type} is @t{"two"} (@b{If:} @code{IFTWO})
-@end table
-
-@b{Features:}
-@table @asis
-@item @code{union-feat2}
-a feature
 @end table
 
 @end deftp
@@ -202,12 +182,6 @@ an integer
 @code{b} is undocumented
 @item @code{b: boolean}
 Not documented
-@end table
-
-@b{Features:}
-@table @asis
-@item @code{alt-feat}
-a feature
 @end table
 
 @end deftp
@@ -308,12 +282,6 @@ another feature
 
 
 @b{Arguments:} the members of @code{Object}
-
-@b{Features:}
-@table @asis
-@item @code{feat3}
-a feature
-@end table
 
 @end deftypefn
 

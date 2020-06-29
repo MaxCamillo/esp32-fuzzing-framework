@@ -15,13 +15,14 @@
 import errno
 import os
 import re
+import sys
 from contextlib import contextmanager
 
 from qapi.common import *
 from qapi.schema import QAPISchemaVisitor
 
 
-class QAPIGen:
+class QAPIGen(object):
 
     def __init__(self, fname):
         self.fname = fname
@@ -44,21 +45,19 @@ class QAPIGen:
         return ''
 
     def write(self, output_dir):
-        # Include paths starting with ../ are used to reuse modules of the main
-        # schema in specialised schemas. Don't overwrite the files that are
-        # already generated for the main schema.
-        if self.fname.startswith('../'):
-            return
         pathname = os.path.join(output_dir, self.fname)
-        odir = os.path.dirname(pathname)
-        if odir:
+        dir = os.path.dirname(pathname)
+        if dir:
             try:
-                os.makedirs(odir)
+                os.makedirs(dir)
             except os.error as e:
                 if e.errno != errno.EEXIST:
                     raise
         fd = os.open(pathname, os.O_RDWR | os.O_CREAT, 0o666)
-        f = open(fd, 'r+', encoding='utf-8')
+        if sys.version_info[0] >= 3:
+            f = open(fd, 'r+', encoding='utf-8')
+        else:
+            f = os.fdopen(fd, 'r+')
         text = self.get_content()
         oldtext = f.read(len(text) + 1)
         if text != oldtext:
@@ -87,7 +86,7 @@ def _wrap_ifcond(ifcond, before, after):
 class QAPIGenCCode(QAPIGen):
 
     def __init__(self, fname):
-        super().__init__(fname)
+        QAPIGen.__init__(self, fname)
         self._start_if = None
 
     def start_if(self, ifcond):
@@ -107,13 +106,13 @@ class QAPIGenCCode(QAPIGen):
 
     def get_content(self):
         assert self._start_if is None
-        return super().get_content()
+        return QAPIGen.get_content(self)
 
 
 class QAPIGenC(QAPIGenCCode):
 
     def __init__(self, fname, blurb, pydoc):
-        super().__init__(fname)
+        QAPIGenCCode.__init__(self, fname)
         self._blurb = blurb
         self._copyright = '\n * '.join(re.findall(r'^Copyright .*', pydoc,
                                                   re.MULTILINE))
@@ -146,7 +145,7 @@ char qapi_dummy_%(name)s;
 class QAPIGenH(QAPIGenC):
 
     def _top(self):
-        return super()._top() + guardstart(self.fname)
+        return QAPIGenC._top(self) + guardstart(self.fname)
 
     def _bottom(self):
         return guardend(self.fname)
@@ -181,7 +180,7 @@ def ifcontext(ifcond, *args):
 class QAPIGenDoc(QAPIGen):
 
     def _top(self):
-        return (super()._top()
+        return (QAPIGen._top(self)
                 + '@c AUTOMATICALLY GENERATED, DO NOT MODIFY\n\n')
 
 
@@ -202,11 +201,10 @@ class QAPISchemaMonolithicCVisitor(QAPISchemaVisitor):
 
 class QAPISchemaModularCVisitor(QAPISchemaVisitor):
 
-    def __init__(self, prefix, what, user_blurb, builtin_blurb, pydoc):
+    def __init__(self, prefix, what, blurb, pydoc):
         self._prefix = prefix
         self._what = what
-        self._user_blurb = user_blurb
-        self._builtin_blurb = builtin_blurb
+        self._blurb = blurb
         self._pydoc = pydoc
         self._genc = None
         self._genh = None
@@ -247,7 +245,7 @@ class QAPISchemaModularCVisitor(QAPISchemaVisitor):
         genc = QAPIGenC(basename + '.c', blurb, self._pydoc)
         genh = QAPIGenH(basename + '.h', blurb, self._pydoc)
         self._module[name] = (genc, genh)
-        self._genc, self._genh = self._module[name]
+        self._set_module(name)
 
     def _add_user_module(self, name, blurb):
         assert self._is_user_module(name)
@@ -258,6 +256,9 @@ class QAPISchemaModularCVisitor(QAPISchemaVisitor):
     def _add_system_module(self, name, blurb):
         self._add_module(name and './' + name, blurb)
 
+    def _set_module(self, name):
+        self._genc, self._genh = self._module[name]
+
     def write(self, output_dir, opt_builtins=False):
         for name in self._module:
             if self._is_builtin_module(name) and not opt_builtins:
@@ -266,24 +267,19 @@ class QAPISchemaModularCVisitor(QAPISchemaVisitor):
             genc.write(output_dir)
             genh.write(output_dir)
 
-    def _begin_system_module(self, name):
-        pass
-
     def _begin_user_module(self, name):
         pass
 
     def visit_module(self, name):
-        if name is None:
-            if self._builtin_blurb:
-                self._add_system_module(None, self._builtin_blurb)
-                self._begin_system_module(name)
-            else:
-                # The built-in module has not been created.  No code may
-                # be generated.
-                self._genc = None
-                self._genh = None
+        if name in self._module:
+            self._set_module(name)
+        elif self._is_builtin_module(name):
+            # The built-in module has not been created.  No code may
+            # be generated.
+            self._genc = None
+            self._genh = None
         else:
-            self._add_user_module(name, self._user_blurb)
+            self._add_user_module(name, self._blurb)
             self._begin_user_module(name)
 
     def visit_include(self, name, info):

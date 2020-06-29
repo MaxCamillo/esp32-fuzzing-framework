@@ -738,8 +738,7 @@ static uint32_t v7m_integrity_sig(CPUARMState *env, uint32_t lr)
      */
     uint32_t sig = 0xfefa125a;
 
-    if (!cpu_isar_feature(aa32_vfp_simd, env_archcpu(env))
-        || (lr & R_V7M_EXCRET_FTYPE_MASK)) {
+    if (!arm_feature(env, ARM_FEATURE_VFP) || (lr & R_V7M_EXCRET_FTYPE_MASK)) {
         sig |= 1;
     }
     return sig;
@@ -842,7 +841,7 @@ static void v7m_exception_taken(ARMCPU *cpu, uint32_t lr, bool dotailchain,
 
     if (dotailchain) {
         /* Sanitize LR FType and PREFIX bits */
-        if (!cpu_isar_feature(aa32_vfp_simd, cpu)) {
+        if (!arm_feature(env, ARM_FEATURE_VFP)) {
             lr |= R_V7M_EXCRET_FTYPE_MASK;
         }
         lr = deposit32(lr, 24, 8, 0xff);
@@ -1374,7 +1373,7 @@ static void do_v7m_exception_exit(ARMCPU *cpu)
 
     ftype = excret & R_V7M_EXCRET_FTYPE_MASK;
 
-    if (!ftype && !cpu_isar_feature(aa32_vfp_simd, cpu)) {
+    if (!arm_feature(env, ARM_FEATURE_VFP) && !ftype) {
         qemu_log_mask(LOG_GUEST_ERROR, "M profile: zero FTYPE in exception "
                       "exit PC value 0x%" PRIx32 " is UNPREDICTABLE "
                       "if FPU not present\n",
@@ -2186,7 +2185,6 @@ void arm_v7m_cpu_do_interrupt(CPUState *cs)
                       "...handling as semihosting call 0x%x\n",
                       env->regs[0]);
         env->regs[0] = do_arm_semihosting(env);
-        env->regs[15] += env->thumb ? 2 : 4;
         return;
     case EXCP_BKPT:
         armv7m_nvic_set_pending(env->nvic, ARMV7M_EXCP_DEBUG, false);
@@ -2451,7 +2449,7 @@ void HELPER(v7m_msr)(CPUARMState *env, uint32_t maskreg, uint32_t val)
              * SFPA is RAZ/WI from NS. FPCA is RO if NSACR.CP10 == 0,
              * RES0 if the FPU is not present, and is stored in the S bank
              */
-            if (cpu_isar_feature(aa32_vfp_simd, env_archcpu(env)) &&
+            if (arm_feature(env, ARM_FEATURE_VFP) &&
                 extract32(env->v7m.nsacr, 10, 1)) {
                 env->v7m.control[M_REG_S] &= ~R_V7M_CONTROL_FPCA_MASK;
                 env->v7m.control[M_REG_S] |= val & R_V7M_CONTROL_FPCA_MASK;
@@ -2566,7 +2564,7 @@ void HELPER(v7m_msr)(CPUARMState *env, uint32_t maskreg, uint32_t val)
             env->v7m.control[env->v7m.secure] &= ~R_V7M_CONTROL_NPRIV_MASK;
             env->v7m.control[env->v7m.secure] |= val & R_V7M_CONTROL_NPRIV_MASK;
         }
-        if (cpu_isar_feature(aa32_vfp_simd, env_archcpu(env))) {
+        if (arm_feature(env, ARM_FEATURE_VFP)) {
             /*
              * SFPA is RAZ/WI from NS or if no FPU.
              * FPCA is RO if NSACR.CP10 == 0, RES0 if the FPU is not present.

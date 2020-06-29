@@ -1,7 +1,14 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
+#include "qapi/qapi-emit-events.h"
 #include "monitor/monitor.h"
-#include "../monitor/monitor-internal.h"
+
+__thread Monitor *cur_mon;
+
+int monitor_vprintf(Monitor *mon, const char *fmt, va_list ap)
+{
+    abort();
+}
 
 int monitor_get_fd(Monitor *mon, const char *name, Error **errp)
 {
@@ -9,10 +16,14 @@ int monitor_get_fd(Monitor *mon, const char *name, Error **errp)
     return -1;
 }
 
-void monitor_init_hmp(Chardev *chr, bool use_readline, Error **errp)
+void monitor_init_qmp(Chardev *chr, bool pretty)
 {
 }
 
-void monitor_fdsets_cleanup(void)
+void monitor_init_hmp(Chardev *chr, bool use_readline)
+{
+}
+
+void qapi_event_emit(QAPIEvent event, QDict *qdict)
 {
 }

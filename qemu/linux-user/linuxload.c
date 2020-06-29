@@ -4,6 +4,8 @@
 
 #include "qemu.h"
 
+#include "fuzz/hfuzz.h"
+
 #define NGROUPS 32
 
 /* ??? This should really be somewhere else.  */

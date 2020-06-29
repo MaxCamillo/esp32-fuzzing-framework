@@ -63,11 +63,10 @@
 void HELPER(itlb_hit_test)(CPUXtensaState *env, uint32_t vaddr)
 {
     /*
-     * Probe the memory; we don't care about the result but
+     * Attempt the memory load; we don't care about the result but
      * only the side-effects (ie any MMU or other exception)
      */
-    probe_access(env, vaddr, 1, MMU_INST_FETCH,
-                 cpu_mmu_index(env, true), GETPC());
+    cpu_ldub_code_ra(env, vaddr, GETPC());
 }
 
 void HELPER(wsr_rasid)(CPUXtensaState *env, uint32_t v)

@@ -36,7 +36,7 @@ typedef struct TriCoreCPUClass {
     /*< public >*/
 
     DeviceRealize parent_realize;
-    DeviceReset parent_reset;
+    void (*parent_reset)(CPUState *cpu);
 } TriCoreCPUClass;
 
 typedef struct TriCoreCPU TriCoreCPU;

@@ -349,9 +349,8 @@ void cpu_loop(CPUARMState *env)
                             env->regs[0] = cpu_get_tls(env);
                             break;
                         default:
-                            qemu_log_mask(LOG_UNIMP,
-                                          "qemu: Unsupported ARM syscall: 0x%x\n",
-                                          n);
+                            gemu_log("qemu: Unsupported ARM syscall: 0x%x\n",
+                                     n);
                             env->regs[0] = -TARGET_ENOSYS;
                             break;
                         }
@@ -378,7 +377,6 @@ void cpu_loop(CPUARMState *env)
             break;
         case EXCP_SEMIHOST:
             env->regs[0] = do_arm_semihosting(env);
-            env->regs[15] += env->thumb ? 2 : 4;
             break;
         case EXCP_INTERRUPT:
             /* just indicate that signals should be handled asap */

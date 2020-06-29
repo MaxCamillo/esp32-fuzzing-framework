@@ -1,8 +1,6 @@
 /*
  * Raspberry Pi emulation (c) 2012 Gregory Estrade
- *
- * This work is licensed under the terms of the GNU GPL, version 2 or later.
- * See the COPYING file in the top-level directory.
+ * This code is licensed under the GNU GPLv2 and later.
  */
 
 #include "qemu/osdep.h"
@@ -428,7 +426,7 @@ static void bcm2835_property_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    device_class_set_props(dc, bcm2835_property_props);
+    dc->props = bcm2835_property_props;
     dc->realize = bcm2835_property_realize;
     dc->vmsd = &vmstate_bcm2835_property;
 }

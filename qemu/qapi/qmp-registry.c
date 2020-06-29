@@ -27,7 +27,7 @@ void qmp_register_command(QmpCommandList *cmds, const char *name,
     QTAILQ_INSERT_TAIL(cmds, cmd, node);
 }
 
-const QmpCommand *qmp_find_command(const QmpCommandList *cmds, const char *name)
+QmpCommand *qmp_find_command(QmpCommandList *cmds, const char *name)
 {
     QmpCommand *cmd;
 
@@ -77,10 +77,10 @@ bool qmp_has_success_response(const QmpCommand *cmd)
     return !(cmd->options & QCO_NO_SUCCESS_RESP);
 }
 
-void qmp_for_each_command(const QmpCommandList *cmds, qmp_cmd_callback_fn fn,
+void qmp_for_each_command(QmpCommandList *cmds, qmp_cmd_callback_fn fn,
                           void *opaque)
 {
-    const QmpCommand *cmd;
+    QmpCommand *cmd;
 
     QTAILQ_FOREACH(cmd, cmds, node) {
         fn(cmd, opaque);

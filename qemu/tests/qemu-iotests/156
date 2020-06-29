@@ -37,9 +37,7 @@ status=1	# failure is the default!
 _cleanup()
 {
     _cleanup_qemu
-    for img in "$TEST_IMG"{,.target}{,.backing,.overlay}; do
-        _rm_test_img "$img"
-    done
+    rm -f "$TEST_IMG"{,.target}{,.backing,.overlay}
 }
 trap "_cleanup; exit \$status" 0 1 2 3 15
 
@@ -51,8 +49,6 @@ trap "_cleanup; exit \$status" 0 1 2 3 15
 _supported_fmt qcow2 qed
 _supported_proto generic
 _unsupported_proto vxhs
-# Copying files around with cp does not work with external data files
-_unsupported_imgopts data_file
 
 # Create source disk
 TEST_IMG="$TEST_IMG.backing" _make_test_img 1M
@@ -124,9 +120,7 @@ _send_qemu_cmd $QEMU_HANDLE \
     '"status": "null"'
 
 # Remove the source images
-for img in "$TEST_IMG{,.backing,.overlay}"; do
-    _rm_test_img "$img"
-done
+rm -f "$TEST_IMG{,.backing,.overlay}"
 
 echo
 

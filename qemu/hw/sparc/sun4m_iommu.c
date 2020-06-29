@@ -379,7 +379,7 @@ static void iommu_class_init(ObjectClass *klass, void *data)
 
     dc->reset = iommu_reset;
     dc->vmsd = &vmstate_iommu;
-    device_class_set_props(dc, iommu_properties);
+    dc->props = iommu_properties;
 }
 
 static const TypeInfo iommu_info = {

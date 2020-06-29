@@ -15,7 +15,6 @@
 #include "qemu/error-report.h"
 #include "qemu/config-file.h"
 #include "qapi/error.h"
-#include "qemu/lockable.h"
 #include "qemu/option.h"
 #include "qemu/rcu_queue.h"
 #include "qemu/xxhash.h"
@@ -151,11 +150,11 @@ do_plugin_register_cb(qemu_plugin_id_t id, enum qemu_plugin_event ev,
 {
     struct qemu_plugin_ctx *ctx;
 
-    QEMU_LOCK_GUARD(&plugin.lock);
+    qemu_rec_mutex_lock(&plugin.lock);
     ctx = plugin_id_to_ctx_locked(id);
     /* if the plugin is on its way out, ignore this request */
     if (unlikely(ctx->uninstalling)) {
-        return;
+        goto out_unlock;
     }
     if (func) {
         struct qemu_plugin_cb *cb = ctx->callbacks[ev];
@@ -179,6 +178,8 @@ do_plugin_register_cb(qemu_plugin_id_t id, enum qemu_plugin_event ev,
     } else {
         plugin_unregister_cb__locked(ctx, ev);
     }
+ out_unlock:
+    qemu_rec_mutex_unlock(&plugin.lock);
 }
 
 void plugin_register_cb(qemu_plugin_id_t id, enum qemu_plugin_event ev,
@@ -285,7 +286,6 @@ static inline uint32_t cb_to_tcg_flags(enum qemu_plugin_cb_flags flags)
     switch (flags) {
     case QEMU_PLUGIN_CB_RW_REGS:
         ret = 0;
-        break;
     case QEMU_PLUGIN_CB_R_REGS:
         ret = TCG_CALL_NO_WG;
         break;

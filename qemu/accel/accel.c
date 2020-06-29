@@ -28,7 +28,13 @@
 #include "hw/boards.h"
 #include "sysemu/arch_init.h"
 #include "sysemu/sysemu.h"
+#include "sysemu/kvm.h"
+#include "sysemu/qtest.h"
+#include "hw/xen/xen.h"
 #include "qom/object.h"
+#include "qemu/error-report.h"
+#include "qemu/option.h"
+#include "qapi/error.h"
 
 static const TypeInfo accel_type = {
     .name = TYPE_ACCEL,
@@ -38,7 +44,7 @@ static const TypeInfo accel_type = {
 };
 
 /* Lookup AccelClass from opt_name. Returns NULL if not found */
-AccelClass *accel_find(const char *opt_name)
+static AccelClass *accel_find(const char *opt_name)
 {
     char *class_name = g_strdup_printf(ACCEL_CLASS_NAME("%s"), opt_name);
     AccelClass *ac = ACCEL_CLASS(object_class_by_name(class_name));
@@ -46,9 +52,11 @@ AccelClass *accel_find(const char *opt_name)
     return ac;
 }
 
-int accel_init_machine(AccelState *accel, MachineState *ms)
+static int accel_init_machine(AccelClass *acc, MachineState *ms)
 {
-    AccelClass *acc = ACCEL_GET_CLASS(accel);
+    ObjectClass *oc = OBJECT_CLASS(acc);
+    const char *cname = object_class_get_name(oc);
+    AccelState *accel = ACCEL(object_new(cname));
     int ret;
     ms->accelerator = accel;
     *(acc->allowed) = true;
@@ -63,9 +71,63 @@ int accel_init_machine(AccelState *accel, MachineState *ms)
     return ret;
 }
 
-AccelState *current_accel(void)
+void configure_accelerator(MachineState *ms, const char *progname)
 {
-    return current_machine->accelerator;
+    const char *accel;
+    char **accel_list, **tmp;
+    int ret;
+    bool accel_initialised = false;
+    bool init_failed = false;
+    AccelClass *acc = NULL;
+
+    accel = qemu_opt_get(qemu_get_machine_opts(), "accel");
+    if (accel == NULL) {
+        /* Select the default accelerator */
+        int pnlen = strlen(progname);
+        if (pnlen >= 3 && g_str_equal(&progname[pnlen - 3], "kvm")) {
+            /* If the program name ends with "kvm", we prefer KVM */
+            accel = "kvm:tcg";
+        } else {
+#if defined(CONFIG_TCG)
+            accel = "tcg";
+#elif defined(CONFIG_KVM)
+            accel = "kvm";
+#else
+            error_report("No accelerator selected and"
+                         " no default accelerator available");
+            exit(1);
+#endif
+        }
+    }
+
+    accel_list = g_strsplit(accel, ":", 0);
+
+    for (tmp = accel_list; !accel_initialised && tmp && *tmp; tmp++) {
+        acc = accel_find(*tmp);
+        if (!acc) {
+            continue;
+        }
+        ret = accel_init_machine(acc, ms);
+        if (ret < 0) {
+            init_failed = true;
+            error_report("failed to initialize %s: %s",
+                         acc->name, strerror(-ret));
+        } else {
+            accel_initialised = true;
+        }
+    }
+    g_strfreev(accel_list);
+
+    if (!accel_initialised) {
+        if (!init_failed) {
+            error_report("-machine accel=%s: No accelerator found", accel);
+        }
+        exit(1);
+    }
+
+    if (init_failed) {
+        error_report("Back to %s accelerator", acc->name);
+    }
 }
 
 void accel_setup_post(MachineState *ms)

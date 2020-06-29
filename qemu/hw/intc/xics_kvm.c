@@ -165,15 +165,8 @@ void icp_kvm_realize(DeviceState *dev, Error **errp)
 
     ret = kvm_vcpu_enable_cap(cs, KVM_CAP_IRQ_XICS, 0, kernel_xics_fd, vcpu_id);
     if (ret < 0) {
-        Error *local_err = NULL;
-
-        error_setg(&local_err, "Unable to connect CPU%ld to kernel XICS: %s",
-                   vcpu_id, strerror(errno));
-        if (errno == ENOSPC) {
-            error_append_hint(&local_err, "Try -smp maxcpus=N with N < %u\n",
-                              MACHINE(qdev_get_machine())->smp.max_cpus);
-        }
-        error_propagate(errp, local_err);
+        error_setg(errp, "Unable to connect CPU%ld to kernel XICS: %s", vcpu_id,
+                   strerror(errno));
         return;
     }
     enabled_icp = g_malloc(sizeof(*enabled_icp));
@@ -349,8 +342,7 @@ void ics_kvm_set_irq(ICSState *ics, int srcno, int val)
     }
 }
 
-int xics_kvm_connect(SpaprInterruptController *intc, uint32_t nr_servers,
-                     Error **errp)
+int xics_kvm_connect(SpaprInterruptController *intc, Error **errp)
 {
     ICSState *ics = ICS_SPAPR(intc);
     int rc;
@@ -404,16 +396,6 @@ int xics_kvm_connect(SpaprInterruptController *intc, uint32_t nr_servers,
     if (rc < 0) {
         error_setg_errno(&local_err, -rc, "Error on KVM_CREATE_DEVICE for XICS");
         goto fail;
-    }
-
-    /* Tell KVM about the # of VCPUs we may have (POWER9 and newer only) */
-    if (kvm_device_check_attr(rc, KVM_DEV_XICS_GRP_CTRL,
-                              KVM_DEV_XICS_NR_SERVERS)) {
-        if (kvm_device_access(rc, KVM_DEV_XICS_GRP_CTRL,
-                              KVM_DEV_XICS_NR_SERVERS, &nr_servers, true,
-                              &local_err)) {
-            goto fail;
-        }
     }
 
     kernel_xics_fd = rc;

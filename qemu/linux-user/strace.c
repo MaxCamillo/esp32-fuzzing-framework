@@ -12,6 +12,8 @@
 #include <sched.h>
 #include "qemu.h"
 
+int do_strace=0;
+
 struct syscallname {
     int nr;
     const char *name;
@@ -78,7 +80,7 @@ print_ipc_cmd(int cmd)
 {
 #define output_cmd(val) \
 if( cmd == val ) { \
-    qemu_log(#val); \
+    gemu_log(#val); \
     return; \
 }
 
@@ -118,7 +120,7 @@ if( cmd == val ) { \
     output_cmd( IPC_RMID );
 
     /* Some value we don't recognize */
-    qemu_log("%d", cmd);
+    gemu_log("%d",cmd);
 }
 
 static void
@@ -149,7 +151,7 @@ print_signal(abi_ulong arg, int last)
         print_raw_param("%ld", arg, last);
         return;
     }
-    qemu_log("%s%s", signal_name, get_comma(last));
+    gemu_log("%s%s", signal_name, get_comma(last));
 }
 
 static void print_si_code(int arg)
@@ -182,10 +184,10 @@ static void print_si_code(int arg)
         codename = "SI_TKILL";
         break;
     default:
-        qemu_log("%d", arg);
+        gemu_log("%d", arg);
         return;
     }
-    qemu_log("%s", codename);
+    gemu_log("%s", codename);
 }
 
 static void get_target_siginfo(target_siginfo_t *tinfo,
@@ -286,33 +288,33 @@ static void print_siginfo(const target_siginfo_t *tinfo)
     int si_type = extract32(tinfo->si_code, 16, 16);
     int si_code = sextract32(tinfo->si_code, 0, 16);
 
-    qemu_log("{si_signo=");
+    gemu_log("{si_signo=");
     print_signal(tinfo->si_signo, 1);
-    qemu_log(", si_code=");
+    gemu_log(", si_code=");
     print_si_code(si_code);
 
     switch (si_type) {
     case QEMU_SI_KILL:
-        qemu_log(", si_pid=%u, si_uid=%u",
+        gemu_log(", si_pid=%u, si_uid=%u",
                  (unsigned int)tinfo->_sifields._kill._pid,
                  (unsigned int)tinfo->_sifields._kill._uid);
         break;
     case QEMU_SI_TIMER:
-        qemu_log(", si_timer1=%u, si_timer2=%u",
+        gemu_log(", si_timer1=%u, si_timer2=%u",
                  tinfo->_sifields._timer._timer1,
                  tinfo->_sifields._timer._timer2);
         break;
     case QEMU_SI_POLL:
-        qemu_log(", si_band=%d, si_fd=%d",
+        gemu_log(", si_band=%d, si_fd=%d",
                  tinfo->_sifields._sigpoll._band,
                  tinfo->_sifields._sigpoll._fd);
         break;
     case QEMU_SI_FAULT:
-        qemu_log(", si_addr=");
+        gemu_log(", si_addr=");
         print_pointer(tinfo->_sifields._sigfault._addr, 1);
         break;
     case QEMU_SI_CHLD:
-        qemu_log(", si_pid=%u, si_uid=%u, si_status=%d"
+        gemu_log(", si_pid=%u, si_uid=%u, si_status=%d"
                  ", si_utime=" TARGET_ABI_FMT_ld
                  ", si_stime=" TARGET_ABI_FMT_ld,
                  (unsigned int)(tinfo->_sifields._sigchld._pid),
@@ -322,7 +324,7 @@ static void print_siginfo(const target_siginfo_t *tinfo)
                  tinfo->_sifields._sigchld._stime);
         break;
     case QEMU_SI_RT:
-        qemu_log(", si_pid=%u, si_uid=%u, si_sigval=" TARGET_ABI_FMT_ld,
+        gemu_log(", si_pid=%u, si_uid=%u, si_sigval=" TARGET_ABI_FMT_ld,
                  (unsigned int)tinfo->_sifields._rt._pid,
                  (unsigned int)tinfo->_sifields._rt._uid,
                  tinfo->_sifields._rt._sigval.sival_ptr);
@@ -330,7 +332,7 @@ static void print_siginfo(const target_siginfo_t *tinfo)
     default:
         g_assert_not_reached();
     }
-    qemu_log("}");
+    gemu_log("}");
 }
 
 static void
@@ -347,76 +349,76 @@ print_sockaddr(abi_ulong addr, abi_long addrlen, int last)
         case AF_UNIX: {
             struct target_sockaddr_un *un = (struct target_sockaddr_un *)sa;
             int i;
-            qemu_log("{sun_family=AF_UNIX,sun_path=\"");
+            gemu_log("{sun_family=AF_UNIX,sun_path=\"");
             for (i = 0; i < addrlen -
                             offsetof(struct target_sockaddr_un, sun_path) &&
                  un->sun_path[i]; i++) {
-                qemu_log("%c", un->sun_path[i]);
+                gemu_log("%c", un->sun_path[i]);
             }
-            qemu_log("\"}");
+            gemu_log("\"}");
             break;
         }
         case AF_INET: {
             struct target_sockaddr_in *in = (struct target_sockaddr_in *)sa;
             uint8_t *c = (uint8_t *)&in->sin_addr.s_addr;
-            qemu_log("{sin_family=AF_INET,sin_port=htons(%d),",
+            gemu_log("{sin_family=AF_INET,sin_port=htons(%d),",
                      ntohs(in->sin_port));
-            qemu_log("sin_addr=inet_addr(\"%d.%d.%d.%d\")",
+            gemu_log("sin_addr=inet_addr(\"%d.%d.%d.%d\")",
                      c[0], c[1], c[2], c[3]);
-            qemu_log("}");
+            gemu_log("}");
             break;
         }
         case AF_PACKET: {
             struct target_sockaddr_ll *ll = (struct target_sockaddr_ll *)sa;
             uint8_t *c = (uint8_t *)&ll->sll_addr;
-            qemu_log("{sll_family=AF_PACKET,"
+            gemu_log("{sll_family=AF_PACKET,"
                      "sll_protocol=htons(0x%04x),if%d,pkttype=",
                      ntohs(ll->sll_protocol), ll->sll_ifindex);
             switch (ll->sll_pkttype) {
             case PACKET_HOST:
-                qemu_log("PACKET_HOST");
+                gemu_log("PACKET_HOST");
                 break;
             case PACKET_BROADCAST:
-                qemu_log("PACKET_BROADCAST");
+                gemu_log("PACKET_BROADCAST");
                 break;
             case PACKET_MULTICAST:
-                qemu_log("PACKET_MULTICAST");
+                gemu_log("PACKET_MULTICAST");
                 break;
             case PACKET_OTHERHOST:
-                qemu_log("PACKET_OTHERHOST");
+                gemu_log("PACKET_OTHERHOST");
                 break;
             case PACKET_OUTGOING:
-                qemu_log("PACKET_OUTGOING");
+                gemu_log("PACKET_OUTGOING");
                 break;
             default:
-                qemu_log("%d", ll->sll_pkttype);
+                gemu_log("%d", ll->sll_pkttype);
                 break;
             }
-            qemu_log(",sll_addr=%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",
+            gemu_log(",sll_addr=%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",
                      c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]);
-            qemu_log("}");
+            gemu_log("}");
             break;
         }
         case AF_NETLINK: {
             struct target_sockaddr_nl *nl = (struct target_sockaddr_nl *)sa;
-            qemu_log("{nl_family=AF_NETLINK,nl_pid=%u,nl_groups=%u}",
+            gemu_log("{nl_family=AF_NETLINK,nl_pid=%u,nl_groups=%u}",
                      tswap32(nl->nl_pid), tswap32(nl->nl_groups));
             break;
         }
         default:
-            qemu_log("{sa_family=%d, sa_data={", sa->sa_family);
+            gemu_log("{sa_family=%d, sa_data={", sa->sa_family);
             for (i = 0; i < 13; i++) {
-                qemu_log("%02x, ", sa->sa_data[i]);
+                gemu_log("%02x, ", sa->sa_data[i]);
             }
-            qemu_log("%02x}", sa->sa_data[i]);
-            qemu_log("}");
+            gemu_log("%02x}", sa->sa_data[i]);
+            gemu_log("}");
             break;
         }
         unlock_user(sa, addr, 0);
     } else {
         print_raw_param("0x"TARGET_ABI_FMT_lx, addr, 0);
     }
-    qemu_log(", "TARGET_ABI_FMT_ld"%s", addrlen, get_comma(last));
+    gemu_log(", "TARGET_ABI_FMT_ld"%s", addrlen, get_comma(last));
 }
 
 static void
@@ -424,19 +426,19 @@ print_socket_domain(int domain)
 {
     switch (domain) {
     case PF_UNIX:
-        qemu_log("PF_UNIX");
+        gemu_log("PF_UNIX");
         break;
     case PF_INET:
-        qemu_log("PF_INET");
+        gemu_log("PF_INET");
         break;
     case PF_NETLINK:
-        qemu_log("PF_NETLINK");
+        gemu_log("PF_NETLINK");
         break;
     case PF_PACKET:
-        qemu_log("PF_PACKET");
+        gemu_log("PF_PACKET");
         break;
     default:
-        qemu_log("%d", domain);
+        gemu_log("%d", domain);
         break;
     }
 }
@@ -444,31 +446,25 @@ print_socket_domain(int domain)
 static void
 print_socket_type(int type)
 {
-    switch (type & TARGET_SOCK_TYPE_MASK) {
+    switch (type) {
     case TARGET_SOCK_DGRAM:
-        qemu_log("SOCK_DGRAM");
+        gemu_log("SOCK_DGRAM");
         break;
     case TARGET_SOCK_STREAM:
-        qemu_log("SOCK_STREAM");
+        gemu_log("SOCK_STREAM");
         break;
     case TARGET_SOCK_RAW:
-        qemu_log("SOCK_RAW");
+        gemu_log("SOCK_RAW");
         break;
     case TARGET_SOCK_RDM:
-        qemu_log("SOCK_RDM");
+        gemu_log("SOCK_RDM");
         break;
     case TARGET_SOCK_SEQPACKET:
-        qemu_log("SOCK_SEQPACKET");
+        gemu_log("SOCK_SEQPACKET");
         break;
     case TARGET_SOCK_PACKET:
-        qemu_log("SOCK_PACKET");
+        gemu_log("SOCK_PACKET");
         break;
-    }
-    if (type & TARGET_SOCK_CLOEXEC) {
-        qemu_log("|SOCK_CLOEXEC");
-    }
-    if (type & TARGET_SOCK_NONBLOCK) {
-        qemu_log("|SOCK_NONBLOCK");
     }
 }
 
@@ -479,10 +475,10 @@ print_socket_protocol(int domain, int type, int protocol)
         (domain == AF_INET && type == TARGET_SOCK_PACKET)) {
         switch (protocol) {
         case 0x0003:
-            qemu_log("ETH_P_ALL");
+            gemu_log("ETH_P_ALL");
             break;
         default:
-            qemu_log("%d", protocol);
+            gemu_log("%d", protocol);
         }
         return;
     }
@@ -490,25 +486,25 @@ print_socket_protocol(int domain, int type, int protocol)
     if (domain == PF_NETLINK) {
         switch (protocol) {
         case NETLINK_ROUTE:
-            qemu_log("NETLINK_ROUTE");
+            gemu_log("NETLINK_ROUTE");
             break;
         case NETLINK_AUDIT:
-            qemu_log("NETLINK_AUDIT");
+            gemu_log("NETLINK_AUDIT");
             break;
         case NETLINK_NETFILTER:
-            qemu_log("NETLINK_NETFILTER");
+            gemu_log("NETLINK_NETFILTER");
             break;
         case NETLINK_KOBJECT_UEVENT:
-            qemu_log("NETLINK_KOBJECT_UEVENT");
+            gemu_log("NETLINK_KOBJECT_UEVENT");
             break;
         case NETLINK_RDMA:
-            qemu_log("NETLINK_RDMA");
+            gemu_log("NETLINK_RDMA");
             break;
         case NETLINK_CRYPTO:
-            qemu_log("NETLINK_CRYPTO");
+            gemu_log("NETLINK_CRYPTO");
             break;
         default:
-            qemu_log("%d", protocol);
+            gemu_log("%d", protocol);
             break;
         }
         return;
@@ -516,19 +512,19 @@ print_socket_protocol(int domain, int type, int protocol)
 
     switch (protocol) {
     case IPPROTO_IP:
-        qemu_log("IPPROTO_IP");
+        gemu_log("IPPROTO_IP");
         break;
     case IPPROTO_TCP:
-        qemu_log("IPPROTO_TCP");
+        gemu_log("IPPROTO_TCP");
         break;
     case IPPROTO_UDP:
-        qemu_log("IPPROTO_UDP");
+        gemu_log("IPPROTO_UDP");
         break;
     case IPPROTO_RAW:
-        qemu_log("IPPROTO_RAW");
+        gemu_log("IPPROTO_RAW");
         break;
     default:
-        qemu_log("%d", protocol);
+        gemu_log("%d", protocol);
         break;
     }
 }
@@ -540,7 +536,7 @@ print_fdset(int n, abi_ulong target_fds_addr)
 {
     int i;
 
-    qemu_log("[");
+    gemu_log("[");
     if( target_fds_addr ) {
         abi_long *target_fds;
 
@@ -554,11 +550,11 @@ print_fdset(int n, abi_ulong target_fds_addr)
 
         for (i=n; i>=0; i--) {
             if ((tswapal(target_fds[i / TARGET_ABI_BITS]) >> (i & (TARGET_ABI_BITS - 1))) & 1)
-                qemu_log("%d,", i);
+                gemu_log("%d,", i );
             }
         unlock_user(target_fds, target_fds_addr, 0);
     }
-    qemu_log("]");
+    gemu_log("]");
 }
 #endif
 
@@ -582,46 +578,46 @@ print_clockid(int clockid, int last)
 {
     switch (clockid) {
     case TARGET_CLOCK_REALTIME:
-        qemu_log("CLOCK_REALTIME");
+        gemu_log("CLOCK_REALTIME");
         break;
     case TARGET_CLOCK_MONOTONIC:
-        qemu_log("CLOCK_MONOTONIC");
+        gemu_log("CLOCK_MONOTONIC");
         break;
     case TARGET_CLOCK_PROCESS_CPUTIME_ID:
-        qemu_log("CLOCK_PROCESS_CPUTIME_ID");
+        gemu_log("CLOCK_PROCESS_CPUTIME_ID");
         break;
     case TARGET_CLOCK_THREAD_CPUTIME_ID:
-        qemu_log("CLOCK_THREAD_CPUTIME_ID");
+        gemu_log("CLOCK_THREAD_CPUTIME_ID");
         break;
     case TARGET_CLOCK_MONOTONIC_RAW:
-        qemu_log("CLOCK_MONOTONIC_RAW");
+        gemu_log("CLOCK_MONOTONIC_RAW");
         break;
     case TARGET_CLOCK_REALTIME_COARSE:
-        qemu_log("CLOCK_REALTIME_COARSE");
+        gemu_log("CLOCK_REALTIME_COARSE");
         break;
     case TARGET_CLOCK_MONOTONIC_COARSE:
-        qemu_log("CLOCK_MONOTONIC_COARSE");
+        gemu_log("CLOCK_MONOTONIC_COARSE");
         break;
     case TARGET_CLOCK_BOOTTIME:
-        qemu_log("CLOCK_BOOTTIME");
+        gemu_log("CLOCK_BOOTTIME");
         break;
     case TARGET_CLOCK_REALTIME_ALARM:
-        qemu_log("CLOCK_REALTIME_ALARM");
+        gemu_log("CLOCK_REALTIME_ALARM");
         break;
     case TARGET_CLOCK_BOOTTIME_ALARM:
-        qemu_log("CLOCK_BOOTTIME_ALARM");
+        gemu_log("CLOCK_BOOTTIME_ALARM");
         break;
     case TARGET_CLOCK_SGI_CYCLE:
-        qemu_log("CLOCK_SGI_CYCLE");
+        gemu_log("CLOCK_SGI_CYCLE");
         break;
     case TARGET_CLOCK_TAI:
-        qemu_log("CLOCK_TAI");
+        gemu_log("CLOCK_TAI");
         break;
     default:
-        qemu_log("%d", clockid);
+        gemu_log("%d", clockid);
         break;
     }
-    qemu_log("%s", get_comma(last));
+    gemu_log("%s", get_comma(last));
 }
 #endif
 
@@ -642,15 +638,15 @@ print_newselect(const struct syscallname *name,
                 abi_long arg1, abi_long arg2, abi_long arg3,
                 abi_long arg4, abi_long arg5, abi_long arg6)
 {
-    qemu_log("%s(" TARGET_ABI_FMT_ld ",", name->name, arg1);
+    gemu_log("%s(" TARGET_ABI_FMT_ld ",", name->name, arg1);
     print_fdset(arg1, arg2);
-    qemu_log(",");
+    gemu_log(",");
     print_fdset(arg1, arg3);
-    qemu_log(",");
+    gemu_log(",");
     print_fdset(arg1, arg4);
-    qemu_log(",");
+    gemu_log(",");
     print_timeval(arg5, 1);
-    qemu_log(")");
+    gemu_log(")");
 
     /* save for use in the return output function below */
     newselect_arg1=arg1;
@@ -667,10 +663,9 @@ print_semctl(const struct syscallname *name,
              abi_long arg1, abi_long arg2, abi_long arg3,
              abi_long arg4, abi_long arg5, abi_long arg6)
 {
-    qemu_log("%s(" TARGET_ABI_FMT_ld "," TARGET_ABI_FMT_ld ",",
-             name->name, arg1, arg2);
+    gemu_log("%s(" TARGET_ABI_FMT_ld "," TARGET_ABI_FMT_ld ",", name->name, arg1, arg2);
     print_ipc_cmd(arg3);
-    qemu_log(",0x" TARGET_ABI_FMT_lx ")", arg4);
+    gemu_log(",0x" TARGET_ABI_FMT_lx ")", arg4);
 }
 #endif
 
@@ -684,7 +679,7 @@ print_execve(const struct syscallname *name,
 
     if (!(s = lock_user_string(arg1)))
         return;
-    qemu_log("%s(\"%s\",{", name->name, s);
+    gemu_log("%s(\"%s\",{", name->name, s);
     unlock_user(s, arg1, 0);
 
     for (arg_ptr_addr = arg2; ; arg_ptr_addr += sizeof(abi_ulong)) {
@@ -698,12 +693,12 @@ print_execve(const struct syscallname *name,
         if (!arg_addr)
             break;
         if ((s = lock_user_string(arg_addr))) {
-            qemu_log("\"%s\",", s);
+            gemu_log("\"%s\",", s);
             unlock_user(s, arg_addr, 0);
         }
     }
 
-    qemu_log("NULL})");
+    gemu_log("NULL})");
 }
 
 #ifdef TARGET_NR_ipc
@@ -714,18 +709,12 @@ print_ipc(const struct syscallname *name,
 {
     switch(arg1) {
     case IPCOP_semctl:
-        qemu_log("semctl(" TARGET_ABI_FMT_ld "," TARGET_ABI_FMT_ld ",",
-                 arg1, arg2);
+        gemu_log("semctl(" TARGET_ABI_FMT_ld "," TARGET_ABI_FMT_ld ",", arg1, arg2);
         print_ipc_cmd(arg3);
-        qemu_log(",0x" TARGET_ABI_FMT_lx ")", arg4);
+        gemu_log(",0x" TARGET_ABI_FMT_lx ")", arg4);
         break;
     default:
-        qemu_log(("%s("
-                  TARGET_ABI_FMT_ld ","
-                  TARGET_ABI_FMT_ld ","
-                  TARGET_ABI_FMT_ld ","
-                  TARGET_ABI_FMT_ld
-                  ")"),
+        gemu_log("%s(" TARGET_ABI_FMT_ld "," TARGET_ABI_FMT_ld "," TARGET_ABI_FMT_ld "," TARGET_ABI_FMT_ld ")",
                  name->name, arg1, arg2, arg3, arg4);
     }
 }
@@ -744,9 +733,9 @@ print_syscall_ret_addr(const struct syscallname *name, abi_long ret)
         errstr = target_strerror(-ret);
     }
     if (errstr) {
-        qemu_log(" = -1 errno=%d (%s)\n", (int)-ret, errstr);
+        gemu_log(" = -1 errno=%d (%s)\n", (int)-ret, errstr);
     } else {
-        qemu_log(" = 0x" TARGET_ABI_FMT_lx "\n", ret);
+        gemu_log(" = 0x" TARGET_ABI_FMT_lx "\n", ret);
     }
 }
 
@@ -754,7 +743,7 @@ print_syscall_ret_addr(const struct syscallname *name, abi_long ret)
 static void
 print_syscall_ret_raw(struct syscallname *name, abi_long ret)
 {
-        qemu_log(" = 0x" TARGET_ABI_FMT_lx "\n", ret);
+        gemu_log(" = 0x" TARGET_ABI_FMT_lx "\n", ret);
 }
 #endif
 
@@ -762,15 +751,15 @@ print_syscall_ret_raw(struct syscallname *name, abi_long ret)
 static void
 print_syscall_ret_newselect(const struct syscallname *name, abi_long ret)
 {
-    qemu_log(" = 0x" TARGET_ABI_FMT_lx " (", ret);
+    gemu_log(" = 0x" TARGET_ABI_FMT_lx " (", ret);
     print_fdset(newselect_arg1,newselect_arg2);
-    qemu_log(",");
+    gemu_log(",");
     print_fdset(newselect_arg1,newselect_arg3);
-    qemu_log(",");
+    gemu_log(",");
     print_fdset(newselect_arg1,newselect_arg4);
-    qemu_log(",");
+    gemu_log(",");
     print_timeval(newselect_arg5, 1);
-    qemu_log(")\n");
+    gemu_log(")\n");
 }
 #endif
 
@@ -781,46 +770,44 @@ print_syscall_ret_newselect(const struct syscallname *name, abi_long ret)
 #define TARGET_TIME_OOP      3   /* leap second in progress */
 #define TARGET_TIME_WAIT     4   /* leap second has occurred */
 #define TARGET_TIME_ERROR    5   /* clock not synchronized */
-#ifdef TARGET_NR_adjtimex
 static void
 print_syscall_ret_adjtimex(const struct syscallname *name, abi_long ret)
 {
     const char *errstr = NULL;
 
-    qemu_log(" = ");
+    gemu_log(" = ");
     if (ret < 0) {
-        qemu_log("-1 errno=%d", errno);
+        gemu_log("-1 errno=%d", errno);
         errstr = target_strerror(-ret);
         if (errstr) {
-            qemu_log(" (%s)", errstr);
+            gemu_log(" (%s)", errstr);
         }
     } else {
-        qemu_log(TARGET_ABI_FMT_ld, ret);
+        gemu_log(TARGET_ABI_FMT_ld, ret);
         switch (ret) {
         case TARGET_TIME_OK:
-            qemu_log(" TIME_OK (clock synchronized, no leap second)");
+            gemu_log(" TIME_OK (clock synchronized, no leap second)");
             break;
         case TARGET_TIME_INS:
-            qemu_log(" TIME_INS (insert leap second)");
+            gemu_log(" TIME_INS (insert leap second)");
             break;
         case TARGET_TIME_DEL:
-            qemu_log(" TIME_DEL (delete leap second)");
+            gemu_log(" TIME_DEL (delete leap second)");
             break;
         case TARGET_TIME_OOP:
-            qemu_log(" TIME_OOP (leap second in progress)");
+            gemu_log(" TIME_OOP (leap second in progress)");
             break;
         case TARGET_TIME_WAIT:
-            qemu_log(" TIME_WAIT (leap second has occurred)");
+            gemu_log(" TIME_WAIT (leap second has occurred)");
             break;
         case TARGET_TIME_ERROR:
-            qemu_log(" TIME_ERROR (clock not synchronized)");
+            gemu_log(" TIME_ERROR (clock not synchronized)");
             break;
         }
     }
 
-    qemu_log("\n");
+    gemu_log("\n");
 }
-#endif
 
 UNUSED static struct flags access_flags[] = {
     FLAG_GENERIC(F_OK),
@@ -1117,12 +1104,12 @@ print_flags(const struct flags *f, abi_long flags, int last)
     int n;
 
     if ((flags == 0) && (f->f_value == 0)) {
-        qemu_log("%s%s", f->f_string, get_comma(last));
+        gemu_log("%s%s", f->f_string, get_comma(last));
         return;
     }
     for (n = 0; f->f_string != NULL; f++) {
         if ((f->f_value != 0) && ((flags & f->f_value) == f->f_value)) {
-            qemu_log("%s%s", sep, f->f_string);
+            gemu_log("%s%s", sep, f->f_string);
             flags &= ~f->f_value;
             sep = "|";
             n++;
@@ -1132,13 +1119,13 @@ print_flags(const struct flags *f, abi_long flags, int last)
     if (n > 0) {
         /* print rest of the flags as numeric */
         if (flags != 0) {
-            qemu_log("%s%#x%s", sep, (unsigned int)flags, get_comma(last));
+            gemu_log("%s%#x%s", sep, (unsigned int)flags, get_comma(last));
         } else {
-            qemu_log("%s", get_comma(last));
+            gemu_log("%s", get_comma(last));
         }
     } else {
         /* no string version of flags found, print them in hex then */
-        qemu_log("%#x%s", (unsigned int)flags, get_comma(last));
+        gemu_log("%#x%s", (unsigned int)flags, get_comma(last));
     }
 }
 
@@ -1147,11 +1134,11 @@ print_at_dirfd(abi_long dirfd, int last)
 {
 #ifdef AT_FDCWD
     if (dirfd == AT_FDCWD) {
-        qemu_log("AT_FDCWD%s", get_comma(last));
+        gemu_log("AT_FDCWD%s", get_comma(last));
         return;
     }
 #endif
-    qemu_log("%d%s", (int)dirfd, get_comma(last));
+    gemu_log("%d%s", (int)dirfd, get_comma(last));
 }
 
 static void
@@ -1162,7 +1149,7 @@ print_file_mode(abi_long mode, int last)
 
     for (m = &mode_flags[0]; m->f_string != NULL; m++) {
         if ((m->f_value & mode) == m->f_value) {
-            qemu_log("%s%s", m->f_string, sep);
+            gemu_log("%s%s", m->f_string, sep);
             sep = "|";
             mode &= ~m->f_value;
             break;
@@ -1172,9 +1159,9 @@ print_file_mode(abi_long mode, int last)
     mode &= ~S_IFMT;
     /* print rest of the mode as octal */
     if (mode != 0)
-        qemu_log("%s%#o", sep, (unsigned int)mode);
+        gemu_log("%s%#o", sep, (unsigned int)mode);
 
-    qemu_log("%s", get_comma(last));
+    gemu_log("%s", get_comma(last));
 }
 
 static void
@@ -1183,17 +1170,17 @@ print_open_flags(abi_long flags, int last)
     print_flags(open_access_flags, flags & TARGET_O_ACCMODE, 1);
     flags &= ~TARGET_O_ACCMODE;
     if (flags == 0) {
-        qemu_log("%s", get_comma(last));
+        gemu_log("%s", get_comma(last));
         return;
     }
-    qemu_log("|");
+    gemu_log("|");
     print_flags(open_flags, flags, last);
 }
 
 static void
 print_syscall_prologue(const struct syscallname *sc)
 {
-    qemu_log("%s(", sc->name);
+    gemu_log("%s(", sc->name);
 }
 
 /*ARGSUSED*/
@@ -1201,7 +1188,7 @@ static void
 print_syscall_epilogue(const struct syscallname *sc)
 {
     (void)sc;
-    qemu_log(")");
+    gemu_log(")");
 }
 
 static void
@@ -1210,7 +1197,7 @@ print_string(abi_long addr, int last)
     char *s;
 
     if ((s = lock_user_string(addr)) != NULL) {
-        qemu_log("\"%s\"%s", s, get_comma(last));
+        gemu_log("\"%s\"%s", s, get_comma(last));
         unlock_user(s, addr, 0);
     } else {
         /* can't get string out of it, so print it as pointer */
@@ -1227,20 +1214,20 @@ print_buf(abi_long addr, abi_long len, int last)
 
     s = lock_user(VERIFY_READ, addr, len, 1);
     if (s) {
-        qemu_log("\"");
+        gemu_log("\"");
         for (i = 0; i < MAX_PRINT_BUF && i < len; i++) {
             if (isprint(s[i])) {
-                qemu_log("%c", s[i]);
+                gemu_log("%c", s[i]);
             } else {
-                qemu_log("\\%o", s[i]);
+                gemu_log("\\%o", s[i]);
             }
         }
-        qemu_log("\"");
+        gemu_log("\"");
         if (i != len) {
-            qemu_log("...");
+            gemu_log("...");
         }
         if (!last) {
-            qemu_log(",");
+            gemu_log(",");
         }
         unlock_user(s, addr, 0);
     } else {
@@ -1258,16 +1245,16 @@ print_raw_param(const char *fmt, abi_long param, int last)
     char format[64];
 
     (void) snprintf(format, sizeof (format), "%s%s", fmt, get_comma(last));
-    qemu_log(format, param);
+    gemu_log(format, param);
 }
 
 static void
 print_pointer(abi_long p, int last)
 {
     if (p == 0)
-        qemu_log("NULL%s", get_comma(last));
+        gemu_log("NULL%s", get_comma(last));
     else
-        qemu_log("0x" TARGET_ABI_FMT_lx "%s", p, get_comma(last));
+        gemu_log("0x" TARGET_ABI_FMT_lx "%s", p, get_comma(last));
 }
 
 /*
@@ -1278,12 +1265,12 @@ static void
 print_number(abi_long addr, int last)
 {
     if (addr == 0) {
-        qemu_log("NULL%s", get_comma(last));
+        gemu_log("NULL%s", get_comma(last));
     } else {
         int num;
 
         get_user_s32(num, addr);
-        qemu_log("[%d]%s", num, get_comma(last));
+        gemu_log("[%d]%s", num, get_comma(last));
     }
 }
 
@@ -1298,11 +1285,11 @@ print_timeval(abi_ulong tv_addr, int last)
             print_pointer(tv_addr, last);
             return;
         }
-        qemu_log("{" TARGET_ABI_FMT_ld "," TARGET_ABI_FMT_ld "}%s",
+        gemu_log("{" TARGET_ABI_FMT_ld "," TARGET_ABI_FMT_ld "}%s",
             tswapal(tv->tv_sec), tswapal(tv->tv_usec), get_comma(last));
         unlock_user(tv, tv_addr, 0);
     } else
-        qemu_log("NULL%s", get_comma(last));
+        gemu_log("NULL%s", get_comma(last));
 }
 
 static void
@@ -1316,11 +1303,11 @@ print_timezone(abi_ulong tz_addr, int last)
             print_pointer(tz_addr, last);
             return;
         }
-        qemu_log("{%d,%d}%s", tswap32(tz->tz_minuteswest),
+        gemu_log("{%d,%d}%s", tswap32(tz->tz_minuteswest),
                  tswap32(tz->tz_dsttime), get_comma(last));
         unlock_user(tz, tz_addr, 0);
     } else {
-        qemu_log("NULL%s", get_comma(last));
+        gemu_log("NULL%s", get_comma(last));
     }
 }
 
@@ -1528,83 +1515,83 @@ print_fcntl(const struct syscallname *name,
     print_raw_param("%d", arg0, 0);
     switch(arg1) {
     case TARGET_F_DUPFD:
-        qemu_log("F_DUPFD,");
+        gemu_log("F_DUPFD,");
         print_raw_param(TARGET_ABI_FMT_ld, arg2, 1);
         break;
     case TARGET_F_GETFD:
-        qemu_log("F_GETFD");
+        gemu_log("F_GETFD");
         break;
     case TARGET_F_SETFD:
-        qemu_log("F_SETFD,");
+        gemu_log("F_SETFD,");
         print_raw_param(TARGET_ABI_FMT_ld, arg2, 1);
         break;
     case TARGET_F_GETFL:
-        qemu_log("F_GETFL");
+        gemu_log("F_GETFL");
         break;
     case TARGET_F_SETFL:
-        qemu_log("F_SETFL,");
+        gemu_log("F_SETFL,");
         print_open_flags(arg2, 1);
         break;
     case TARGET_F_GETLK:
-        qemu_log("F_GETLK,");
+        gemu_log("F_GETLK,");
         print_pointer(arg2, 1);
         break;
     case TARGET_F_SETLK:
-        qemu_log("F_SETLK,");
+        gemu_log("F_SETLK,");
         print_pointer(arg2, 1);
         break;
     case TARGET_F_SETLKW:
-        qemu_log("F_SETLKW,");
+        gemu_log("F_SETLKW,");
         print_pointer(arg2, 1);
         break;
     case TARGET_F_GETOWN:
-        qemu_log("F_GETOWN");
+        gemu_log("F_GETOWN");
         break;
     case TARGET_F_SETOWN:
-        qemu_log("F_SETOWN,");
+        gemu_log("F_SETOWN,");
         print_raw_param(TARGET_ABI_FMT_ld, arg2, 0);
         break;
     case TARGET_F_GETSIG:
-        qemu_log("F_GETSIG");
+        gemu_log("F_GETSIG");
         break;
     case TARGET_F_SETSIG:
-        qemu_log("F_SETSIG,");
+        gemu_log("F_SETSIG,");
         print_raw_param(TARGET_ABI_FMT_ld, arg2, 0);
         break;
 #if TARGET_ABI_BITS == 32
     case TARGET_F_GETLK64:
-        qemu_log("F_GETLK64,");
+        gemu_log("F_GETLK64,");
         print_pointer(arg2, 1);
         break;
     case TARGET_F_SETLK64:
-        qemu_log("F_SETLK64,");
+        gemu_log("F_SETLK64,");
         print_pointer(arg2, 1);
         break;
     case TARGET_F_SETLKW64:
-        qemu_log("F_SETLKW64,");
+        gemu_log("F_SETLKW64,");
         print_pointer(arg2, 1);
         break;
 #endif
     case TARGET_F_SETLEASE:
-        qemu_log("F_SETLEASE,");
+        gemu_log("F_SETLEASE,");
         print_raw_param(TARGET_ABI_FMT_ld, arg2, 0);
         break;
     case TARGET_F_GETLEASE:
-        qemu_log("F_GETLEASE");
+        gemu_log("F_GETLEASE");
         break;
     case TARGET_F_SETPIPE_SZ:
-        qemu_log("F_SETPIPE_SZ,");
+        gemu_log("F_SETPIPE_SZ,");
         print_raw_param(TARGET_ABI_FMT_ld, arg2, 1);
         break;
     case TARGET_F_GETPIPE_SZ:
-        qemu_log("F_GETPIPE_SZ");
+        gemu_log("F_GETPIPE_SZ");
         break;
     case TARGET_F_DUPFD_CLOEXEC:
-        qemu_log("F_DUPFD_CLOEXEC,");
+        gemu_log("F_DUPFD_CLOEXEC,");
         print_raw_param(TARGET_ABI_FMT_ld, arg2, 1);
         break;
     case TARGET_F_NOTIFY:
-        qemu_log("F_NOTIFY,");
+        gemu_log("F_NOTIFY,");
         print_raw_param(TARGET_ABI_FMT_ld, arg2, 0);
         break;
     default:
@@ -1692,7 +1679,7 @@ print__llseek(const struct syscallname *name,
     case SEEK_CUR: whence = "SEEK_CUR"; break;
     case SEEK_END: whence = "SEEK_END"; break;
     }
-    qemu_log("%s", whence);
+    gemu_log("%s",whence);
     print_syscall_epilogue(name);
 }
 #endif
@@ -1707,9 +1694,9 @@ print_socket(const struct syscallname *name,
 
     print_syscall_prologue(name);
     print_socket_domain(domain);
-    qemu_log(",");
+    gemu_log(",");
     print_socket_type(type);
-    qemu_log(",");
+    gemu_log(",");
     if (domain == AF_PACKET ||
         (domain == AF_INET && type == TARGET_SOCK_PACKET)) {
         protocol = tswap16(protocol);
@@ -1741,17 +1728,17 @@ static void do_print_socket(const char *name, abi_long arg1)
     get_user_ualx(domain, arg1, 0);
     get_user_ualx(type, arg1, 1);
     get_user_ualx(protocol, arg1, 2);
-    qemu_log("%s(", name);
+    gemu_log("%s(", name);
     print_socket_domain(domain);
-    qemu_log(",");
+    gemu_log(",");
     print_socket_type(type);
-    qemu_log(",");
+    gemu_log(",");
     if (domain == AF_PACKET ||
         (domain == AF_INET && type == TARGET_SOCK_PACKET)) {
         protocol = tswap16(protocol);
     }
     print_socket_protocol(domain, type, protocol);
-    qemu_log(")");
+    gemu_log(")");
 }
 
 static void do_print_sockaddr(const char *name, abi_long arg1)
@@ -1762,10 +1749,10 @@ static void do_print_sockaddr(const char *name, abi_long arg1)
     get_user_ualx(addr, arg1, 1);
     get_user_ualx(addrlen, arg1, 2);
 
-    qemu_log("%s(", name);
+    gemu_log("%s(", name);
     print_sockfd(sockfd, 0);
     print_sockaddr(addr, addrlen, 0);
-    qemu_log(")");
+    gemu_log(")");
 }
 
 static void do_print_listen(const char *name, abi_long arg1)
@@ -1775,10 +1762,10 @@ static void do_print_listen(const char *name, abi_long arg1)
     get_user_ualx(sockfd, arg1, 0);
     get_user_ualx(backlog, arg1, 1);
 
-    qemu_log("%s(", name);
+    gemu_log("%s(", name);
     print_sockfd(sockfd, 0);
     print_raw_param(TARGET_ABI_FMT_ld, backlog, 1);
-    qemu_log(")");
+    gemu_log(")");
 }
 
 static void do_print_socketpair(const char *name, abi_long arg1)
@@ -1790,15 +1777,15 @@ static void do_print_socketpair(const char *name, abi_long arg1)
     get_user_ualx(protocol, arg1, 2);
     get_user_ualx(tab, arg1, 3);
 
-    qemu_log("%s(", name);
+    gemu_log("%s(", name);
     print_socket_domain(domain);
-    qemu_log(",");
+    gemu_log(",");
     print_socket_type(type);
-    qemu_log(",");
+    gemu_log(",");
     print_socket_protocol(domain, type, protocol);
-    qemu_log(",");
+    gemu_log(",");
     print_raw_param(TARGET_ABI_FMT_lx, tab, 1);
-    qemu_log(")");
+    gemu_log(")");
 }
 
 static void do_print_sendrecv(const char *name, abi_long arg1)
@@ -1810,12 +1797,12 @@ static void do_print_sendrecv(const char *name, abi_long arg1)
     get_user_ualx(len, arg1, 2);
     get_user_ualx(flags, arg1, 3);
 
-    qemu_log("%s(", name);
+    gemu_log("%s(", name);
     print_sockfd(sockfd, 0);
     print_buf(msg, len, 0);
     print_raw_param(TARGET_ABI_FMT_ld, len, 0);
     print_flags(msg_flags, flags, 1);
-    qemu_log(")");
+    gemu_log(")");
 }
 
 static void do_print_msgaddr(const char *name, abi_long arg1)
@@ -1829,13 +1816,13 @@ static void do_print_msgaddr(const char *name, abi_long arg1)
     get_user_ualx(addr, arg1, 4);
     get_user_ualx(addrlen, arg1, 5);
 
-    qemu_log("%s(", name);
+    gemu_log("%s(", name);
     print_sockfd(sockfd, 0);
     print_buf(msg, len, 0);
     print_raw_param(TARGET_ABI_FMT_ld, len, 0);
     print_flags(msg_flags, flags, 0);
     print_sockaddr(addr, addrlen, 0);
-    qemu_log(")");
+    gemu_log(")");
 }
 
 static void do_print_shutdown(const char *name, abi_long arg1)
@@ -1845,23 +1832,23 @@ static void do_print_shutdown(const char *name, abi_long arg1)
     get_user_ualx(sockfd, arg1, 0);
     get_user_ualx(how, arg1, 1);
 
-    qemu_log("shutdown(");
+    gemu_log("shutdown(");
     print_sockfd(sockfd, 0);
     switch (how) {
     case SHUT_RD:
-        qemu_log("SHUT_RD");
+        gemu_log("SHUT_RD");
         break;
     case SHUT_WR:
-        qemu_log("SHUT_WR");
+        gemu_log("SHUT_WR");
         break;
     case SHUT_RDWR:
-        qemu_log("SHUT_RDWR");
+        gemu_log("SHUT_RDWR");
         break;
     default:
         print_raw_param(TARGET_ABI_FMT_ld, how, 1);
         break;
     }
-    qemu_log(")");
+    gemu_log(")");
 }
 
 static void do_print_msg(const char *name, abi_long arg1)
@@ -1872,11 +1859,11 @@ static void do_print_msg(const char *name, abi_long arg1)
     get_user_ualx(msg, arg1, 1);
     get_user_ualx(flags, arg1, 2);
 
-    qemu_log("%s(", name);
+    gemu_log("%s(", name);
     print_sockfd(sockfd, 0);
     print_pointer(msg, 0);
     print_flags(msg_flags, flags, 1);
-    qemu_log(")");
+    gemu_log(")");
 }
 
 static void do_print_sockopt(const char *name, abi_long arg1)
@@ -1889,113 +1876,113 @@ static void do_print_sockopt(const char *name, abi_long arg1)
     get_user_ualx(optval, arg1, 3);
     get_user_ualx(optlen, arg1, 4);
 
-    qemu_log("%s(", name);
+    gemu_log("%s(", name);
     print_sockfd(sockfd, 0);
     switch (level) {
     case SOL_TCP:
-        qemu_log("SOL_TCP,");
+        gemu_log("SOL_TCP,");
         print_raw_param(TARGET_ABI_FMT_ld, optname, 0);
         print_pointer(optval, 0);
         break;
     case SOL_IP:
-        qemu_log("SOL_IP,");
+        gemu_log("SOL_IP,");
         print_raw_param(TARGET_ABI_FMT_ld, optname, 0);
         print_pointer(optval, 0);
         break;
     case SOL_RAW:
-        qemu_log("SOL_RAW,");
+        gemu_log("SOL_RAW,");
         print_raw_param(TARGET_ABI_FMT_ld, optname, 0);
         print_pointer(optval, 0);
         break;
     case TARGET_SOL_SOCKET:
-        qemu_log("SOL_SOCKET,");
+        gemu_log("SOL_SOCKET,");
         switch (optname) {
         case TARGET_SO_DEBUG:
-            qemu_log("SO_DEBUG,");
+            gemu_log("SO_DEBUG,");
 print_optint:
             print_number(optval, 0);
             break;
         case TARGET_SO_REUSEADDR:
-            qemu_log("SO_REUSEADDR,");
+            gemu_log("SO_REUSEADDR,");
             goto print_optint;
         case TARGET_SO_REUSEPORT:
-            qemu_log("SO_REUSEPORT,");
+            gemu_log("SO_REUSEPORT,");
             goto print_optint;
         case TARGET_SO_TYPE:
-            qemu_log("SO_TYPE,");
+            gemu_log("SO_TYPE,");
             goto print_optint;
         case TARGET_SO_ERROR:
-            qemu_log("SO_ERROR,");
+            gemu_log("SO_ERROR,");
             goto print_optint;
         case TARGET_SO_DONTROUTE:
-            qemu_log("SO_DONTROUTE,");
+            gemu_log("SO_DONTROUTE,");
             goto print_optint;
         case TARGET_SO_BROADCAST:
-            qemu_log("SO_BROADCAST,");
+            gemu_log("SO_BROADCAST,");
             goto print_optint;
         case TARGET_SO_SNDBUF:
-            qemu_log("SO_SNDBUF,");
+            gemu_log("SO_SNDBUF,");
             goto print_optint;
         case TARGET_SO_RCVBUF:
-            qemu_log("SO_RCVBUF,");
+            gemu_log("SO_RCVBUF,");
             goto print_optint;
         case TARGET_SO_KEEPALIVE:
-            qemu_log("SO_KEEPALIVE,");
+            gemu_log("SO_KEEPALIVE,");
             goto print_optint;
         case TARGET_SO_OOBINLINE:
-            qemu_log("SO_OOBINLINE,");
+            gemu_log("SO_OOBINLINE,");
             goto print_optint;
         case TARGET_SO_NO_CHECK:
-            qemu_log("SO_NO_CHECK,");
+            gemu_log("SO_NO_CHECK,");
             goto print_optint;
         case TARGET_SO_PRIORITY:
-            qemu_log("SO_PRIORITY,");
+            gemu_log("SO_PRIORITY,");
             goto print_optint;
         case TARGET_SO_BSDCOMPAT:
-            qemu_log("SO_BSDCOMPAT,");
+            gemu_log("SO_BSDCOMPAT,");
             goto print_optint;
         case TARGET_SO_PASSCRED:
-            qemu_log("SO_PASSCRED,");
+            gemu_log("SO_PASSCRED,");
             goto print_optint;
         case TARGET_SO_TIMESTAMP:
-            qemu_log("SO_TIMESTAMP,");
+            gemu_log("SO_TIMESTAMP,");
             goto print_optint;
         case TARGET_SO_RCVLOWAT:
-            qemu_log("SO_RCVLOWAT,");
+            gemu_log("SO_RCVLOWAT,");
             goto print_optint;
         case TARGET_SO_RCVTIMEO:
-            qemu_log("SO_RCVTIMEO,");
+            gemu_log("SO_RCVTIMEO,");
             print_timeval(optval, 0);
             break;
         case TARGET_SO_SNDTIMEO:
-            qemu_log("SO_SNDTIMEO,");
+            gemu_log("SO_SNDTIMEO,");
             print_timeval(optval, 0);
             break;
         case TARGET_SO_ATTACH_FILTER: {
             struct target_sock_fprog *fprog;
 
-            qemu_log("SO_ATTACH_FILTER,");
+            gemu_log("SO_ATTACH_FILTER,");
 
             if (lock_user_struct(VERIFY_READ, fprog, optval,  0)) {
                 struct target_sock_filter *filter;
-                qemu_log("{");
+                gemu_log("{");
                 if (lock_user_struct(VERIFY_READ, filter,
                                      tswapal(fprog->filter),  0)) {
                     int i;
                     for (i = 0; i < tswap16(fprog->len) - 1; i++) {
-                        qemu_log("[%d]{0x%x,%d,%d,0x%x},",
+                        gemu_log("[%d]{0x%x,%d,%d,0x%x},",
                                  i, tswap16(filter[i].code),
                                  filter[i].jt, filter[i].jf,
                                  tswap32(filter[i].k));
                     }
-                    qemu_log("[%d]{0x%x,%d,%d,0x%x}",
+                    gemu_log("[%d]{0x%x,%d,%d,0x%x}",
                              i, tswap16(filter[i].code),
                              filter[i].jt, filter[i].jf,
                              tswap32(filter[i].k));
                 } else {
-                    qemu_log(TARGET_ABI_FMT_lx, tswapal(fprog->filter));
+                    gemu_log(TARGET_ABI_FMT_lx, tswapal(fprog->filter));
                 }
-                qemu_log(",%d},", tswap16(fprog->len));
+                gemu_log(",%d},", tswap16(fprog->len));
                 unlock_user(fprog, optval, 0);
             } else {
                 print_pointer(optval, 0);
@@ -2015,7 +2002,7 @@ print_optint:
         break;
     }
     print_raw_param(TARGET_ABI_FMT_ld, optlen, 1);
-    qemu_log(")");
+    gemu_log(")");
 }
 
 #define PRINT_SOCKOP(name, func) \
@@ -2177,7 +2164,7 @@ print_rt_sigprocmask(const struct syscallname *name,
     case TARGET_SIG_UNBLOCK: how = "SIG_UNBLOCK"; break;
     case TARGET_SIG_SETMASK: how = "SIG_SETMASK"; break;
     }
-    qemu_log("%s,", how);
+    gemu_log("%s,",how);
     print_pointer(arg1, 0);
     print_pointer(arg2, 1);
     print_syscall_epilogue(name);
@@ -2291,7 +2278,7 @@ print_syslog_action(abi_ulong arg, int last)
             return;
         }
     }
-    qemu_log("%s%s", type, get_comma(last));
+    gemu_log("%s%s", type, get_comma(last));
 }
 
 static void
@@ -2696,20 +2683,20 @@ static void print_futex_op(abi_long tflag, int last)
 {
 #define print_op(val) \
 if( cmd == val ) { \
-    qemu_log(#val); \
+    gemu_log(#val); \
     return; \
 }
 
     int cmd = (int)tflag;
 #ifdef FUTEX_PRIVATE_FLAG
     if (cmd & FUTEX_PRIVATE_FLAG) {
-        qemu_log("FUTEX_PRIVATE_FLAG|");
+        gemu_log("FUTEX_PRIVATE_FLAG|");
         cmd &= ~FUTEX_PRIVATE_FLAG;
     }
 #endif
 #ifdef FUTEX_CLOCK_REALTIME
     if (cmd & FUTEX_CLOCK_REALTIME) {
-        qemu_log("FUTEX_CLOCK_REALTIME|");
+        gemu_log("FUTEX_CLOCK_REALTIME|");
         cmd &= ~FUTEX_CLOCK_REALTIME;
     }
 #endif
@@ -2729,7 +2716,7 @@ if( cmd == val ) { \
     print_op(FUTEX_WAKE_BITSET)
 #endif
     /* unknown values */
-    qemu_log("%d", cmd);
+    gemu_log("%d",cmd);
 }
 
 static void
@@ -2825,24 +2812,22 @@ print_syscall(int num,
     int i;
     const char *format="%s(" TARGET_ABI_FMT_ld "," TARGET_ABI_FMT_ld "," TARGET_ABI_FMT_ld "," TARGET_ABI_FMT_ld "," TARGET_ABI_FMT_ld "," TARGET_ABI_FMT_ld ")";
 
-    qemu_log("%d ", getpid());
+    gemu_log("%d ", getpid() );
 
     for(i=0;i<nsyscalls;i++)
         if( scnames[i].nr == num ) {
             if( scnames[i].call != NULL ) {
-                scnames[i].call(
-                    &scnames[i], arg1, arg2, arg3, arg4, arg5, arg6);
+                scnames[i].call(&scnames[i],arg1,arg2,arg3,arg4,arg5,arg6);
             } else {
                 /* XXX: this format system is broken because it uses
                    host types and host pointers for strings */
                 if( scnames[i].format != NULL )
                     format = scnames[i].format;
-                qemu_log(format,
-                         scnames[i].name, arg1, arg2, arg3, arg4, arg5, arg6);
+                gemu_log(format,scnames[i].name, arg1,arg2,arg3,arg4,arg5,arg6);
             }
             return;
         }
-    qemu_log("Unknown syscall %d\n", num);
+    gemu_log("Unknown syscall %d\n", num);
 }
 
 
@@ -2855,16 +2840,16 @@ print_syscall_ret(int num, abi_long ret)
     for(i=0;i<nsyscalls;i++)
         if( scnames[i].nr == num ) {
             if( scnames[i].result != NULL ) {
-                scnames[i].result(&scnames[i], ret);
+                scnames[i].result(&scnames[i],ret);
             } else {
                 if (ret < 0) {
                     errstr = target_strerror(-ret);
                 }
                 if (errstr) {
-                    qemu_log(" = -1 errno=" TARGET_ABI_FMT_ld " (%s)\n",
+                    gemu_log(" = -1 errno=" TARGET_ABI_FMT_ld " (%s)\n",
                              -ret, errstr);
                 } else {
-                    qemu_log(" = " TARGET_ABI_FMT_ld "\n", ret);
+                    gemu_log(" = " TARGET_ABI_FMT_ld "\n", ret);
                 }
             }
             break;
@@ -2876,9 +2861,9 @@ void print_taken_signal(int target_signum, const target_siginfo_t *tinfo)
     /* Print the strace output for a signal being taken:
      * --- SIGSEGV {si_signo=SIGSEGV, si_code=SI_KERNEL, si_addr=0} ---
      */
-    qemu_log("--- ");
+    gemu_log("--- ");
     print_signal(target_signum, 1);
-    qemu_log(" ");
+    gemu_log(" ");
     print_siginfo(tinfo);
-    qemu_log(" ---\n");
+    gemu_log(" ---\n");
 }

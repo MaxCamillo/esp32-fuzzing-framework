@@ -1930,7 +1930,7 @@ typedef struct {
     SM501State state;
     uint32_t vram_size;
     uint32_t base;
-    SerialMM serial;
+    void *chr_state;
 } SM501SysBusState;
 
 static void sm501_realize_sysbus(DeviceState *dev, Error **errp)
@@ -1938,7 +1938,6 @@ static void sm501_realize_sysbus(DeviceState *dev, Error **errp)
     SM501SysBusState *s = SYSBUS_SM501(dev);
     SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
     DeviceState *usb_dev;
-    MemoryRegion *mr;
 
     sm501_init(&s->state, dev, s->vram_size);
     if (get_local_mem_size(&s->state) != s->vram_size) {
@@ -1959,15 +1958,17 @@ static void sm501_realize_sysbus(DeviceState *dev, Error **errp)
     sysbus_pass_irq(sbd, SYS_BUS_DEVICE(usb_dev));
 
     /* bridge to serial emulation module */
-    qdev_init_nofail(DEVICE(&s->serial));
-    mr = sysbus_mmio_get_region(SYS_BUS_DEVICE(&s->serial), 0);
-    memory_region_add_subregion(&s->state.mmio_region, SM501_UART0, mr);
-    /* TODO : chain irq to IRL */
+    if (s->chr_state) {
+        serial_mm_init(&s->state.mmio_region, SM501_UART0, 2,
+                       NULL, /* TODO : chain irq to IRL */
+                       115200, s->chr_state, DEVICE_LITTLE_ENDIAN);
+    }
 }
 
 static Property sm501_sysbus_properties[] = {
     DEFINE_PROP_UINT32("vram-size", SM501SysBusState, vram_size, 0),
     DEFINE_PROP_UINT32("base", SM501SysBusState, base, 0),
+    DEFINE_PROP_PTR("chr-state", SM501SysBusState, chr_state),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -1995,23 +1996,12 @@ static void sm501_sysbus_class_init(ObjectClass *klass, void *data)
     dc->realize = sm501_realize_sysbus;
     set_bit(DEVICE_CATEGORY_DISPLAY, dc->categories);
     dc->desc = "SM501 Multimedia Companion";
-    device_class_set_props(dc, sm501_sysbus_properties);
+    dc->props = sm501_sysbus_properties;
     dc->reset = sm501_reset_sysbus;
     dc->vmsd = &vmstate_sm501_sysbus;
-}
-
-static void sm501_sysbus_init(Object *o)
-{
-    SM501SysBusState *sm501 = SYSBUS_SM501(o);
-    SerialMM *smm = &sm501->serial;
-
-    sysbus_init_child_obj(o, "serial", smm, sizeof(SerialMM), TYPE_SERIAL_MM);
-    qdev_set_legacy_instance_id(DEVICE(smm), SM501_UART0, 2);
-    qdev_prop_set_uint8(DEVICE(smm), "regshift", 2);
-    qdev_prop_set_uint8(DEVICE(smm), "endianness", DEVICE_LITTLE_ENDIAN);
-
-    object_property_add_alias(o, "chardev",
-                              OBJECT(smm), "chardev", &error_abort);
+    /* Note: pointer property "chr-state" may remain null, thus
+     * no need for dc->user_creatable = false;
+     */
 }
 
 static const TypeInfo sm501_sysbus_info = {
@@ -2019,7 +2009,6 @@ static const TypeInfo sm501_sysbus_info = {
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(SM501SysBusState),
     .class_init    = sm501_sysbus_class_init,
-    .instance_init = sm501_sysbus_init,
 };
 
 #define TYPE_PCI_SM501 "sm501"
@@ -2085,7 +2074,7 @@ static void sm501_pci_class_init(ObjectClass *klass, void *data)
     k->class_id = PCI_CLASS_DISPLAY_OTHER;
     set_bit(DEVICE_CATEGORY_DISPLAY, dc->categories);
     dc->desc = "SM501 Display Controller";
-    device_class_set_props(dc, sm501_pci_properties);
+    dc->props = sm501_pci_properties;
     dc->reset = sm501_reset_pci;
     dc->hotpluggable = false;
     dc->vmsd = &vmstate_sm501_pci;

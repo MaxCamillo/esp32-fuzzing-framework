@@ -21,7 +21,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/range.h"
 #include "hw/i2c/pm_smbus.h"
 #include "hw/pci/pci.h"
 #include "migration/vmstate.h"

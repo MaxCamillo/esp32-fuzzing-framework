@@ -193,7 +193,7 @@ typedef struct VirtioThinintInfo {
 typedef struct VirtioRevInfo {
     uint16_t revision;
     uint16_t length;
-    uint8_t data[];
+    uint8_t data[0];
 } QEMU_PACKED VirtioRevInfo;
 
 /* Specify where the virtqueues for the subchannel are in guest memory. */
@@ -697,7 +697,6 @@ static void virtio_ccw_device_realize(VirtioCcwDevice *dev, Error **errp)
     CCWDeviceClass *ck = CCW_DEVICE_GET_CLASS(ccw_dev);
     SubchDev *sch;
     Error *err = NULL;
-    int i;
 
     sch = css_create_sch(ccw_dev->devno, errp);
     if (!sch) {
@@ -718,9 +717,6 @@ static void virtio_ccw_device_realize(VirtioCcwDevice *dev, Error **errp)
     ccw_dev->sch = sch;
     dev->indicators = NULL;
     dev->revision = -1;
-    for (i = 0; i < ADAPTER_ROUTES_MAX_GSI; i++) {
-        dev->routes.gsi[i] = -1;
-    }
     css_sch_build_virtual_schib(sch, 0, VIRTIO_CCW_CHPID_TYPE);
 
     trace_virtio_ccw_new_device(
@@ -790,7 +786,7 @@ static uint8_t virtio_set_ind_atomic(SubchDev *sch, uint64_t ind_loc,
     hwaddr len = 1;
     uint8_t *ind_addr;
 
-    ind_addr = cpu_physical_memory_map(ind_loc, &len, true);
+    ind_addr = cpu_physical_memory_map(ind_loc, &len, 1);
     if (!ind_addr) {
         error_report("%s(%x.%x.%04x): unable to access indicator",
                      __func__, sch->cssid, sch->ssid, sch->schid);

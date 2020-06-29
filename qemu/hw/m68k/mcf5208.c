@@ -234,6 +234,7 @@ static void mcf5208evb_init(MachineState *machine)
     qemu_irq *pic;
     MemoryRegion *address_space_mem = get_system_memory();
     MemoryRegion *rom = g_new(MemoryRegion, 1);
+    MemoryRegion *ram = g_new(MemoryRegion, 1);
     MemoryRegion *sram = g_new(MemoryRegion, 1);
 
     cpu = M68K_CPU(cpu_create(machine->cpu_type));
@@ -248,7 +249,8 @@ static void mcf5208evb_init(MachineState *machine)
     memory_region_add_subregion(address_space_mem, 0x00000000, rom);
 
     /* DRAM at 0x40000000 */
-    memory_region_add_subregion(address_space_mem, 0x40000000, machine->ram);
+    memory_region_allocate_system_memory(ram, NULL, "mcf5208.ram", ram_size);
+    memory_region_add_subregion(address_space_mem, 0x40000000, ram);
 
     /* Internal SRAM.  */
     memory_region_init_ram(sram, NULL, "mcf5208.sram", 16 * KiB, &error_fatal);
@@ -327,7 +329,7 @@ static void mcf5208evb_init(MachineState *machine)
     }
 
     kernel_size = load_elf(kernel_filename, NULL, NULL, NULL, &elf_entry,
-                           NULL, NULL, NULL, 1, EM_68K, 0, 0);
+                           NULL, NULL, 1, EM_68K, 0, 0);
     entry = elf_entry;
     if (kernel_size < 0) {
         kernel_size = load_uimage(kernel_filename, &entry, NULL, NULL,
@@ -350,9 +352,8 @@ static void mcf5208evb_machine_init(MachineClass *mc)
 {
     mc->desc = "MCF5208EVB";
     mc->init = mcf5208evb_init;
-    mc->is_default = true;
+    mc->is_default = 1;
     mc->default_cpu_type = M68K_CPU_TYPE_NAME("m5208");
-    mc->default_ram_id = "mcf5208.ram";
 }
 
 DEFINE_MACHINE("mcf5208evb", mcf5208evb_machine_init)

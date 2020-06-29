@@ -16,8 +16,6 @@
 #include "hw/qdev-properties.h"
 #include "hw/core/cpu.h"
 
-#define A9_GIC_NUM_PRIORITY_BITS    5
-
 static void a9mp_priv_set_irq(void *opaque, int irq, int level)
 {
     A9MPPrivState *s = (A9MPPrivState *)opaque;
@@ -70,8 +68,6 @@ static void a9mp_priv_realize(DeviceState *dev, Error **errp)
     gicdev = DEVICE(&s->gic);
     qdev_prop_set_uint32(gicdev, "num-cpu", s->num_cpu);
     qdev_prop_set_uint32(gicdev, "num-irq", s->num_irq);
-    qdev_prop_set_uint32(gicdev, "num-priority-bits",
-                         A9_GIC_NUM_PRIORITY_BITS);
 
     /* Make the GIC's TZ support match the CPUs. We assume that
      * either all the CPUs have TZ, or none do.
@@ -179,7 +175,7 @@ static void a9mp_priv_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = a9mp_priv_realize;
-    device_class_set_props(dc, a9mp_priv_properties);
+    dc->props = a9mp_priv_properties;
 }
 
 static const TypeInfo a9mp_priv_info = {

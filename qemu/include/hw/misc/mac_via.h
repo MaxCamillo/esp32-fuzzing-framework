@@ -81,8 +81,6 @@ typedef struct MOS6522Q800VIA2State {
 typedef struct MacVIAState {
     SysBusDevice busdev;
 
-    VMChangeStateEntry *vmstate;
-
     /* MMIO */
     MemoryRegion mmio;
     MemoryRegion via1mem;
@@ -102,7 +100,6 @@ typedef struct MacVIAState {
     uint8_t cmd;
     int wprotect;
     int alt;
-    BlockBackend *blk;
 
     /* ADB */
     ADBBusState adb_bus;

@@ -40,7 +40,6 @@ typedef struct PnvCore {
     /*< public >*/
     PowerPCCPU **threads;
     uint32_t pir;
-    uint64_t hrmor;
     PnvChip *chip;
 
     MemoryRegion xscom_regs;

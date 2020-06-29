@@ -44,7 +44,7 @@ typedef struct MicroBlazeCPUClass {
     /*< public >*/
 
     DeviceRealize parent_realize;
-    DeviceReset parent_reset;
+    void (*parent_reset)(CPUState *cpu);
 } MicroBlazeCPUClass;
 
 typedef struct MicroBlazeCPU MicroBlazeCPU;

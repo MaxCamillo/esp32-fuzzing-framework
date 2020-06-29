@@ -161,9 +161,9 @@ static void sdl_update_caption(struct sdl2_console *scon)
     }
 }
 
-static void sdl_hide_cursor(struct sdl2_console *scon)
+static void sdl_hide_cursor(void)
 {
-    if (scon->opts->has_show_cursor && scon->opts->show_cursor) {
+    if (!cursor_hide) {
         return;
     }
 
@@ -175,9 +175,9 @@ static void sdl_hide_cursor(struct sdl2_console *scon)
     }
 }
 
-static void sdl_show_cursor(struct sdl2_console *scon)
+static void sdl_show_cursor(void)
 {
-    if (scon->opts->has_show_cursor && scon->opts->show_cursor) {
+    if (!cursor_hide) {
         return;
     }
 
@@ -216,7 +216,7 @@ static void sdl_grab_start(struct sdl2_console *scon)
             SDL_WarpMouseInWindow(scon->real_window, guest_x, guest_y);
         }
     } else {
-        sdl_hide_cursor(scon);
+        sdl_hide_cursor();
     }
     SDL_SetWindowGrab(scon->real_window, SDL_TRUE);
     gui_grab = 1;
@@ -227,7 +227,7 @@ static void sdl_grab_end(struct sdl2_console *scon)
 {
     SDL_SetWindowGrab(scon->real_window, SDL_FALSE);
     gui_grab = 0;
-    sdl_show_cursor(scon);
+    sdl_show_cursor();
     sdl_update_caption(scon);
 }
 
@@ -658,7 +658,7 @@ static void sdl_mouse_warp(DisplayChangeListener *dcl,
 
     if (on) {
         if (!guest_cursor) {
-            sdl_show_cursor(scon);
+            sdl_show_cursor();
         }
         if (gui_grab || qemu_input_is_absolute() || absolute_enabled) {
             SDL_SetCursor(guest_sprite);
@@ -667,7 +667,7 @@ static void sdl_mouse_warp(DisplayChangeListener *dcl,
             }
         }
     } else if (gui_grab) {
-        sdl_hide_cursor(scon);
+        sdl_hide_cursor();
     }
     guest_cursor = on;
     guest_x = x, guest_y = y;
@@ -772,7 +772,7 @@ static void sdl2_display_init(DisplayState *ds, DisplayOptions *o)
      * This is a bit hackish but saves us from bigger problem.
      * Maybe it's a good idea to fix this in SDL instead.
      */
-    g_setenv("SDL_VIDEODRIVER", "x11", 0);
+    setenv("SDL_VIDEODRIVER", "x11", 0);
 #endif
 
     if (SDL_Init(SDL_INIT_VIDEO)) {

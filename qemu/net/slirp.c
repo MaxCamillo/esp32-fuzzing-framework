@@ -610,13 +610,25 @@ error:
     return -1;
 }
 
-static SlirpState *slirp_lookup(Monitor *mon, const char *id)
+static SlirpState *slirp_lookup(Monitor *mon, const char *hub_id,
+                                const char *name)
 {
-    if (id) {
-        NetClientState *nc = qemu_find_netdev(id);
-        if (!nc) {
-            monitor_printf(mon, "unrecognized netdev id '%s'\n", id);
-            return NULL;
+    if (name) {
+        NetClientState *nc;
+        if (hub_id) {
+            nc = net_hub_find_client_by_name(strtol(hub_id, NULL, 0), name);
+            if (!nc) {
+                monitor_printf(mon, "unrecognized (hub-id, stackname) pair\n");
+                return NULL;
+            }
+            warn_report("Using 'hub-id' is deprecated, specify the netdev id "
+                        "directly instead");
+        } else {
+            nc = qemu_find_netdev(name);
+            if (!nc) {
+                monitor_printf(mon, "unrecognized netdev id '%s'\n", name);
+                return NULL;
+            }
         }
         if (strcmp(nc->model, "user")) {
             monitor_printf(mon, "invalid device specified\n");
@@ -643,12 +655,16 @@ void hmp_hostfwd_remove(Monitor *mon, const QDict *qdict)
     int err;
     const char *arg1 = qdict_get_str(qdict, "arg1");
     const char *arg2 = qdict_get_try_str(qdict, "arg2");
+    const char *arg3 = qdict_get_try_str(qdict, "arg3");
 
-    if (arg2) {
-        s = slirp_lookup(mon, arg1);
+    if (arg3) {
+        s = slirp_lookup(mon, arg1, arg2);
+        src_str = arg3;
+    } else if (arg2) {
+        s = slirp_lookup(mon, NULL, arg1);
         src_str = arg2;
     } else {
-        s = slirp_lookup(mon, NULL);
+        s = slirp_lookup(mon, NULL, NULL);
         src_str = arg1;
     }
     if (!s) {
@@ -768,12 +784,16 @@ void hmp_hostfwd_add(Monitor *mon, const QDict *qdict)
     SlirpState *s;
     const char *arg1 = qdict_get_str(qdict, "arg1");
     const char *arg2 = qdict_get_try_str(qdict, "arg2");
+    const char *arg3 = qdict_get_try_str(qdict, "arg3");
 
-    if (arg2) {
-        s = slirp_lookup(mon, arg1);
+    if (arg3) {
+        s = slirp_lookup(mon, arg1, arg2);
+        redir_str = arg3;
+    } else if (arg2) {
+        s = slirp_lookup(mon, NULL, arg1);
         redir_str = arg2;
     } else {
-        s = slirp_lookup(mon, NULL);
+        s = slirp_lookup(mon, NULL, NULL);
         redir_str = arg1;
     }
     if (s) {

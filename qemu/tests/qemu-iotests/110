@@ -28,8 +28,8 @@ status=1	# failure is the default!
 
 _cleanup()
 {
-    _cleanup_test_img
-    _rm_test_img "$TEST_IMG.copy"
+	_cleanup_test_img
+        rm -f "$TEST_IMG.copy"
 }
 trap "_cleanup; exit \$status" 0 1 2 3 15
 
@@ -67,7 +67,6 @@ echo
 # Across blkdebug without a config file, you cannot reconstruct filenames, so
 # qemu is incapable of knowing the directory of the top image from the filename
 # alone. However, using bdrv_dirname(), it should still work.
-# (Filter out the json:{} filename so this test works with external data files)
 TEST_IMG="json:{
     'driver': '$IMGFMT',
     'file': {
@@ -83,8 +82,7 @@ TEST_IMG="json:{
             }
         ]
     }
-}" _img_info | _filter_img_info | grep -v 'backing file format' \
-    | _filter_json_filename
+}" _img_info | _filter_img_info | grep -v 'backing file format'
 
 echo
 echo '=== Backing name is always relative to the backed image ==='
@@ -116,8 +114,7 @@ TEST_IMG="json:{
             }
         ]
     }
-}" _img_info | _filter_img_info | grep -v 'backing file format' \
-    | _filter_json_filename
+}" _img_info | _filter_img_info | grep -v 'backing file format'
 
 
 # success, all done

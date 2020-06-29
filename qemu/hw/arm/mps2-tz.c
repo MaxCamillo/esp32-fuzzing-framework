@@ -39,7 +39,6 @@
 
 #include "qemu/osdep.h"
 #include "qemu/units.h"
-#include "qemu/cutils.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "hw/arm/boot.h"
@@ -80,6 +79,7 @@ typedef struct {
     MachineState parent;
 
     ARMSSE iotkit;
+    MemoryRegion psram;
     MemoryRegion ssram[3];
     MemoryRegion ssram1_m;
     MPS2SCC scc;
@@ -388,13 +388,6 @@ static void mps2tz_common_init(MachineState *machine)
         exit(1);
     }
 
-    if (machine->ram_size != mc->default_ram_size) {
-        char *sz = size_to_str(mc->default_ram_size);
-        error_report("Invalid RAM size, should be %s", sz);
-        g_free(sz);
-        exit(EXIT_FAILURE);
-    }
-
     sysbus_init_child_obj(OBJECT(machine), "iotkit", &mms->iotkit,
                           sizeof(mms->iotkit), mmc->armsse_type);
     iotkitdev = DEVICE(&mms->iotkit);
@@ -465,7 +458,9 @@ static void mps2tz_common_init(MachineState *machine)
      * tradeoffs. For QEMU they're all just RAM, though. We arbitrarily
      * call the 16MB our "system memory", as it's the largest lump.
      */
-    memory_region_add_subregion(system_memory, 0x80000000, machine->ram);
+    memory_region_allocate_system_memory(&mms->psram,
+                                         NULL, "mps.ram", 16 * MiB);
+    memory_region_add_subregion(system_memory, 0x80000000, &mms->psram);
 
     /* The overflow IRQs for all UARTs are ORed together.
      * Tx, Rx and "combined" IRQs are sent to the NVIC separately.
@@ -647,8 +642,6 @@ static void mps2tz_class_init(ObjectClass *oc, void *data)
 
     mc->init = mps2tz_common_init;
     iic->check = mps2_tz_idau_check;
-    mc->default_ram_size = 16 * MiB;
-    mc->default_ram_id = "mps.ram";
 }
 
 static void mps2tz_an505_class_init(ObjectClass *oc, void *data)

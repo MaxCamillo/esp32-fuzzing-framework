@@ -361,8 +361,3 @@ callbacks are called:
 - .impl.unaligned specifies that the *implementation* supports unaligned
   accesses; if false, unaligned accesses will be emulated by two aligned
   accesses.
-
-API Reference
--------------
-
-.. kernel-doc:: include/exec/memory.h

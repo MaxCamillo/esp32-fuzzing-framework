@@ -1024,7 +1024,8 @@ int qcow2_snapshot_load_tmp(BlockDriverState *bs,
         return ret;
     }
     new_l1_bytes = sn->l1_size * sizeof(uint64_t);
-    new_l1_table = qemu_try_blockalign(bs->file->bs, new_l1_bytes);
+    new_l1_table = qemu_try_blockalign(bs->file->bs,
+                                       ROUND_UP(new_l1_bytes, 512));
     if (new_l1_table == NULL) {
         return -ENOMEM;
     }

@@ -53,7 +53,12 @@ check_qemu()
         INVOCATION="$@"
     fi
 
-    make $MAKEFLAGS $INVOCATION
+    if command -v gtester > /dev/null 2>&1 && \
+           gtester --version > /dev/null 2>&1; then
+        make $MAKEFLAGS $INVOCATION
+    else
+        echo "No working gtester, skipping make $INVOCATION"
+    fi
 }
 
 test_fail()

@@ -15,7 +15,6 @@
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
 
-#define ARM11MPCORE_NUM_GIC_PRIORITY_BITS    4
 
 static void mpcore_priv_set_irq(void *opaque, int irq, int level)
 {
@@ -87,10 +86,6 @@ static void mpcore_priv_realize(DeviceState *dev, Error **errp)
 
     qdev_prop_set_uint32(gicdev, "num-cpu", s->num_cpu);
     qdev_prop_set_uint32(gicdev, "num-irq", s->num_irq);
-    qdev_prop_set_uint32(gicdev, "num-priority-bits",
-                         ARM11MPCORE_NUM_GIC_PRIORITY_BITS);
-
-
     object_property_set_bool(OBJECT(&s->gic), true, "realized", &err);
     if (err != NULL) {
         error_propagate(errp, err);
@@ -161,7 +156,7 @@ static void mpcore_priv_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = mpcore_priv_realize;
-    device_class_set_props(dc, mpcore_priv_properties);
+    dc->props = mpcore_priv_properties;
 }
 
 static const TypeInfo mpcore_priv_info = {

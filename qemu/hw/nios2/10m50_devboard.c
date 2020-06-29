@@ -120,7 +120,7 @@ static void nios2_10m50_ghrd_machine_init(struct MachineClass *mc)
 {
     mc->desc = "Altera 10M50 GHRD Nios II design";
     mc->init = nios2_10m50_ghrd_init;
-    mc->is_default = true;
+    mc->is_default = 1;
 }
 
 DEFINE_MACHINE("10m50-ghrd", nios2_10m50_ghrd_machine_init);

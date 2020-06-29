@@ -65,6 +65,8 @@
 #include "qemu/rcu.h"
 #include "qemu/thread.h"
 
+long long n_reads = 0LL;
+long n_updates = 0L;
 int nthreadsrunning;
 
 #define GOFLAG_INIT 0
@@ -76,19 +78,10 @@ static volatile int goflag = GOFLAG_INIT;
 #define RCU_READ_RUN 1000
 
 #define NR_THREADS 100
+static QemuMutex counts_mutex;
 static QemuThread threads[NR_THREADS];
 static struct rcu_reader_data *data[NR_THREADS];
 static int n_threads;
-
-/*
- * Statistical counts
- *
- * These are the sum of local counters at the end of a run.
- * Updates are protected by a mutex.
- */
-static QemuMutex counts_mutex;
-long long n_reads = 0LL;
-long n_updates = 0L;
 
 static void create_thread(void *(*func)(void *))
 {
@@ -230,15 +223,15 @@ static void uperftest(int nupdaters, int duration)
 #define RCU_STRESS_PIPE_LEN 10
 
 struct rcu_stress {
-    int age;  /* how many update cycles while not rcu_stress_current */
+    int pipe_count;
     int mbtest;
 };
 
 struct rcu_stress rcu_stress_array[RCU_STRESS_PIPE_LEN] = { { 0 } };
 struct rcu_stress *rcu_stress_current;
-int n_mberror;
+int rcu_stress_idx;
 
-/* Updates protected by counts_mutex */
+int n_mberror;
 long long rcu_stress_count[RCU_STRESS_PIPE_LEN + 1];
 
 
@@ -260,7 +253,7 @@ static void *rcu_read_stress_test(void *arg)
     while (goflag == GOFLAG_RUN) {
         rcu_read_lock();
         p = atomic_rcu_read(&rcu_stress_current);
-        if (atomic_read(&p->mbtest) == 0) {
+        if (p->mbtest == 0) {
             n_mberror++;
         }
         rcu_read_lock();
@@ -268,7 +261,7 @@ static void *rcu_read_stress_test(void *arg)
             garbage++;
         }
         rcu_read_unlock();
-        pc = atomic_read(&p->age);
+        pc = p->pipe_count;
         rcu_read_unlock();
         if ((pc > RCU_STRESS_PIPE_LEN) || (pc < 0)) {
             pc = RCU_STRESS_PIPE_LEN;
@@ -287,52 +280,32 @@ static void *rcu_read_stress_test(void *arg)
     return NULL;
 }
 
-/*
- * Stress Test Updater
- *
- * The updater cycles around updating rcu_stress_current to point at
- * one of the rcu_stress_array_entries and resets it's age. It
- * then increments the age of all the other entries. The age
- * will be read under an rcu_read_lock() and distribution of values
- * calculated. The final result gives an indication of how many
- * previously current rcu_stress entries are in flight until the RCU
- * cycle complete.
- */
 static void *rcu_update_stress_test(void *arg)
 {
-    int i, rcu_stress_idx = 0;
-    struct rcu_stress *cp = atomic_read(&rcu_stress_current);
+    int i;
+    struct rcu_stress *p;
 
     rcu_register_thread();
-    *(struct rcu_reader_data **)arg = &rcu_reader;
 
+    *(struct rcu_reader_data **)arg = &rcu_reader;
     while (goflag == GOFLAG_INIT) {
         g_usleep(1000);
     }
-
     while (goflag == GOFLAG_RUN) {
-        struct rcu_stress *p;
-        rcu_stress_idx++;
-        if (rcu_stress_idx >= RCU_STRESS_PIPE_LEN) {
-            rcu_stress_idx = 0;
+        i = rcu_stress_idx + 1;
+        if (i >= RCU_STRESS_PIPE_LEN) {
+            i = 0;
         }
-        p = &rcu_stress_array[rcu_stress_idx];
-        /* catching up with ourselves would be a bug */
-        assert(p != cp);
-        atomic_set(&p->mbtest, 0);
+        p = &rcu_stress_array[i];
+        p->mbtest = 0;
         smp_mb();
-        atomic_set(&p->age, 0);
-        atomic_set(&p->mbtest, 1);
+        p->pipe_count = 0;
+        p->mbtest = 1;
         atomic_rcu_set(&rcu_stress_current, p);
-        cp = p;
-        /*
-         * New RCU structure is now live, update pipe counts on old
-         * ones.
-         */
+        rcu_stress_idx = i;
         for (i = 0; i < RCU_STRESS_PIPE_LEN; i++) {
             if (i != rcu_stress_idx) {
-                atomic_set(&rcu_stress_array[i].age,
-                           rcu_stress_array[i].age + 1);
+                rcu_stress_array[i].pipe_count++;
             }
         }
         synchronize_rcu();
@@ -365,7 +338,7 @@ static void stresstest(int nreaders, int duration)
     int i;
 
     rcu_stress_current = &rcu_stress_array[0];
-    rcu_stress_current->age = 0;
+    rcu_stress_current->pipe_count = 0;
     rcu_stress_current->mbtest = 1;
     for (i = 0; i < nreaders; i++) {
         create_thread(rcu_read_stress_test);
@@ -395,7 +368,7 @@ static void gtest_stress(int nreaders, int duration)
     int i;
 
     rcu_stress_current = &rcu_stress_array[0];
-    rcu_stress_current->age = 0;
+    rcu_stress_current->pipe_count = 0;
     rcu_stress_current->mbtest = 1;
     for (i = 0; i < nreaders; i++) {
         create_thread(rcu_read_stress_test);
@@ -440,8 +413,7 @@ static void gtest_stress_10_5(void)
 
 static void usage(int argc, char *argv[])
 {
-    fprintf(stderr, "Usage: %s [nreaders [ [r|u]perf | stress [duration]]\n",
-            argv[0]);
+    fprintf(stderr, "Usage: %s [nreaders [ perf | stress ] ]\n", argv[0]);
     exit(-1);
 }
 

@@ -593,6 +593,7 @@ static void pxa2xx_palette_parse(PXA2xxLCDState *s, int ch, int bpp)
         n = 256;
         break;
     default:
+        format = 0;
         return;
     }
 

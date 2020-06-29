@@ -28,6 +28,7 @@ typedef struct XlnxZCU102 {
     MachineState parent_obj;
 
     XlnxZynqMPState soc;
+    MemoryRegion ddr_ram;
 
     bool secure;
     bool virt;
@@ -86,10 +87,13 @@ static void xlnx_zcu102_init(MachineState *machine)
                  ram_size);
     }
 
+    memory_region_allocate_system_memory(&s->ddr_ram, NULL, "ddr-ram",
+                                         ram_size);
+
     object_initialize_child(OBJECT(machine), "soc", &s->soc, sizeof(s->soc),
                             TYPE_XLNX_ZYNQMP, &error_abort, NULL);
 
-    object_property_set_link(OBJECT(&s->soc), OBJECT(machine->ram),
+    object_property_set_link(OBJECT(&s->soc), OBJECT(&s->ddr_ram),
                          "ddr-ram", &error_abort);
     object_property_set_bool(OBJECT(&s->soc), s->secure, "secure",
                              &error_fatal);
@@ -207,7 +211,6 @@ static void xlnx_zcu102_machine_class_init(ObjectClass *oc, void *data)
     mc->ignore_memory_transaction_failures = true;
     mc->max_cpus = XLNX_ZYNQMP_NUM_APU_CPUS + XLNX_ZYNQMP_NUM_RPU_CPUS;
     mc->default_cpus = XLNX_ZYNQMP_NUM_APU_CPUS;
-    mc->default_ram_id = "ddr-ram";
 }
 
 static const TypeInfo xlnx_zcu102_machine_init_typeinfo = {

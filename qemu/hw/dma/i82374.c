@@ -149,7 +149,7 @@ static void i82374_class_init(ObjectClass *klass, void *data)
     
     dc->realize = i82374_realize;
     dc->vmsd = &vmstate_i82374;
-    device_class_set_props(dc, i82374_properties);
+    dc->props = i82374_properties;
 }
 
 static const TypeInfo i82374_info = {

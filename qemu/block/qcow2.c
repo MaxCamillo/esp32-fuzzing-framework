@@ -135,16 +135,13 @@ static ssize_t qcow2_crypto_hdr_init_func(QCryptoBlock *block, size_t headerlen,
     s->crypto_header.length = headerlen;
     s->crypto_header.offset = ret;
 
-    /*
-     * Zero fill all space in cluster so it has predictable
-     * content, as we may not initialize some regions of the
-     * header (eg only 1 out of 8 key slots will be initialized)
-     */
+    /* Zero fill remaining space in cluster so it has predictable
+     * content in case of future spec changes */
     clusterlen = size_to_clusters(s, headerlen) * s->cluster_size;
     assert(qcow2_pre_write_overlap_check(bs, 0, ret, clusterlen, false) == 0);
     ret = bdrv_pwrite_zeroes(bs->file,
-                             ret,
-                             clusterlen, 0);
+                             ret + headerlen,
+                             clusterlen - headerlen, 0);
     if (ret < 0) {
         error_setg_errno(errp, -ret, "Could not zero fill encryption header");
         return -1;
@@ -177,7 +174,7 @@ static ssize_t qcow2_crypto_hdr_write_func(QCryptoBlock *block, size_t offset,
 }
 
 
-/*
+/* 
  * read qcow2 extension and fill bs
  * start reading from start_offset
  * finish reading upon magic of value 0 or when end_offset reached
@@ -370,7 +367,7 @@ static int qcow2_read_extensions(BlockDriverState *bs, uint64_t start_offset,
                 return -EINVAL;
             }
 
-            if (offset_into_cluster(s, bitmaps_ext.bitmap_directory_offset)) {
+            if (bitmaps_ext.bitmap_directory_offset & (s->cluster_size - 1)) {
                 error_setg(errp, "bitmaps_ext: "
                                  "invalid bitmap directory offset");
                 return -EINVAL;
@@ -456,15 +453,16 @@ static void cleanup_unknown_header_ext(BlockDriverState *bs)
 static void report_unsupported_feature(Error **errp, Qcow2Feature *table,
                                        uint64_t mask)
 {
-    g_autoptr(GString) features = g_string_sized_new(60);
+    char *features = g_strdup("");
+    char *old;
 
     while (table && table->name[0] != '\0') {
         if (table->type == QCOW2_FEAT_TYPE_INCOMPATIBLE) {
             if (mask & (1ULL << table->bit)) {
-                if (features->len > 0) {
-                    g_string_append(features, ", ");
-                }
-                g_string_append_printf(features, "%.46s", table->name);
+                old = features;
+                features = g_strdup_printf("%s%s%.46s", old, *old ? ", " : "",
+                                           table->name);
+                g_free(old);
                 mask &= ~(1ULL << table->bit);
             }
         }
@@ -472,14 +470,14 @@ static void report_unsupported_feature(Error **errp, Qcow2Feature *table,
     }
 
     if (mask) {
-        if (features->len > 0) {
-            g_string_append(features, ", ");
-        }
-        g_string_append_printf(features,
-                               "Unknown incompatible feature: %" PRIx64, mask);
+        old = features;
+        features = g_strdup_printf("%s%sUnknown incompatible feature: %" PRIx64,
+                                   old, *old ? ", " : "", mask);
+        g_free(old);
     }
 
-    error_setg(errp, "Unsupported qcow2 feature(s): %s", features->str);
+    error_setg(errp, "Unsupported qcow2 feature(s): %s", features);
+    g_free(features);
 }
 
 /*
@@ -1494,7 +1492,7 @@ static int coroutine_fn qcow2_do_open(BlockDriverState *bs, QDict *options,
 
     if (s->l1_size > 0) {
         s->l1_table = qemu_try_blockalign(bs->file->bs,
-                                          s->l1_size * sizeof(uint64_t));
+            ROUND_UP(s->l1_size * sizeof(uint64_t), 512));
         if (s->l1_table == NULL) {
             error_setg(errp, "Could not allocate L1 table");
             ret = -ENOMEM;
@@ -1707,13 +1705,13 @@ static int coroutine_fn qcow2_do_open(BlockDriverState *bs, QDict *options,
     if (!(bdrv_get_flags(bs) & BDRV_O_INACTIVE)) {
         /* It's case 1, 2 or 3.2. Or 3.1 which is BUG in management layer. */
         bool header_updated = qcow2_load_dirty_bitmaps(bs, &local_err);
-        if (local_err != NULL) {
-            error_propagate(errp, local_err);
-            ret = -EINVAL;
-            goto fail;
-        }
 
         update_header = update_header && !header_updated;
+    }
+    if (local_err != NULL) {
+        error_propagate(errp, local_err);
+        ret = -EINVAL;
+        goto fail;
     }
 
     if (update_header) {
@@ -1724,8 +1722,7 @@ static int coroutine_fn qcow2_do_open(BlockDriverState *bs, QDict *options,
         }
     }
 
-    bs->supported_zero_flags = header.version >= 3 ?
-                               BDRV_REQ_MAY_UNMAP | BDRV_REQ_NO_FALLBACK : 0;
+    bs->supported_zero_flags = header.version >= 3 ? BDRV_REQ_MAY_UNMAP : 0;
 
     /* Repair image if dirty */
     if (!(flags & (BDRV_O_CHECK | BDRV_O_INACTIVE)) && !bs->read_only &&
@@ -1758,7 +1755,6 @@ static int coroutine_fn qcow2_do_open(BlockDriverState *bs, QDict *options,
     g_free(s->image_data_file);
     if (has_data_file(bs)) {
         bdrv_unref_child(bs, s->data_file);
-        s->data_file = NULL;
     }
     g_free(s->unknown_header_fields);
     cleanup_unknown_header_ext(bs);
@@ -1885,11 +1881,6 @@ fail:
 static void qcow2_reopen_commit(BDRVReopenState *state)
 {
     qcow2_update_options_commit(state->bs, state->opaque);
-    g_free(state->opaque);
-}
-
-static void qcow2_reopen_commit_post(BDRVReopenState *state)
-{
     if (state->flags & BDRV_O_RDWR) {
         Error *local_err = NULL;
 
@@ -1904,6 +1895,7 @@ static void qcow2_reopen_commit_post(BDRVReopenState *state)
                               bdrv_get_node_name(state->bs));
         }
     }
+    g_free(state->opaque);
 }
 
 static void qcow2_reopen_abort(BDRVReopenState *state)
@@ -1966,8 +1958,9 @@ static int coroutine_fn qcow2_co_block_status(BlockDriverState *bs,
 {
     BDRVQcow2State *s = bs->opaque;
     uint64_t cluster_offset;
+    int index_in_cluster, ret;
     unsigned int bytes;
-    int ret, status = 0;
+    int status = 0;
 
     qemu_co_mutex_lock(&s->lock);
 
@@ -1988,7 +1981,8 @@ static int coroutine_fn qcow2_co_block_status(BlockDriverState *bs,
 
     if ((ret == QCOW2_CLUSTER_NORMAL || ret == QCOW2_CLUSTER_ZERO_ALLOC) &&
         !s->crypto) {
-        *map = cluster_offset | offset_into_cluster(s, offset);
+        index_in_cluster = offset & (s->cluster_size - 1);
+        *map = cluster_offset | index_in_cluster;
         *file = s->data_file->bs;
         status |= BDRV_BLOCK_OFFSET_VALID;
     }
@@ -2076,6 +2070,8 @@ qcow2_co_preadv_encrypted(BlockDriverState *bs,
         goto fail;
     }
 
+    assert(QEMU_IS_ALIGNED(offset, BDRV_SECTOR_SIZE));
+    assert(QEMU_IS_ALIGNED(bytes, BDRV_SECTOR_SIZE));
     if (qcow2_co_decrypt(bs,
                          file_cluster_offset + offset_into_cluster(s, offset),
                          offset, buf, bytes) < 0)
@@ -2173,7 +2169,10 @@ static coroutine_fn int qcow2_co_preadv_task(BlockDriverState *bs,
                                           offset, bytes, qiov, qiov_offset);
 
     case QCOW2_CLUSTER_NORMAL:
-        assert(offset_into_cluster(s, file_cluster_offset) == 0);
+        if ((file_cluster_offset & 511) != 0) {
+            return -EIO;
+        }
+
         if (bs->encrypted) {
             return qcow2_co_preadv_encrypted(bs, file_cluster_offset,
                                              offset, bytes, qiov, qiov_offset);
@@ -2509,7 +2508,7 @@ static coroutine_fn int qcow2_co_pwritev_part(
             goto out_locked;
         }
 
-        assert(offset_into_cluster(s, cluster_offset) == 0);
+        assert((cluster_offset & 511) == 0);
 
         ret = qcow2_pre_write_overlap_check(bs, 0,
                                             cluster_offset + offset_in_cluster,
@@ -2611,7 +2610,6 @@ static void qcow2_close(BlockDriverState *bs)
 
     qcrypto_block_free(s->crypto);
     s->crypto = NULL;
-    qapi_free_QCryptoBlockOpenOptions(s->crypto_opts);
 
     g_free(s->unknown_header_fields);
     cleanup_unknown_header_ext(bs);
@@ -2622,7 +2620,6 @@ static void qcow2_close(BlockDriverState *bs)
 
     if (has_data_file(bs)) {
         bdrv_unref_child(bs, s->data_file);
-        s->data_file = NULL;
     }
 
     qcow2_refcount_close(bs);
@@ -2823,16 +2820,9 @@ int qcow2_update_header(BlockDriverState *bs)
         buflen -= ret;
     }
 
-    /*
-     * Feature table.  A mere 8 feature names occupies 392 bytes, and
-     * when coupled with the v3 minimum header of 104 bytes plus the
-     * 8-byte end-of-extension marker, that would leave only 8 bytes
-     * for a backing file name in an image with 512-byte clusters.
-     * Thus, we choose to omit this header for cluster sizes 4k and
-     * smaller.
-     */
-    if (s->qcow_version >= 3 && s->cluster_size > 4096) {
-        static const Qcow2Feature features[] = {
+    /* Feature table */
+    if (s->qcow_version >= 3) {
+        Qcow2Feature features[] = {
             {
                 .type = QCOW2_FEAT_TYPE_INCOMPATIBLE,
                 .bit  = QCOW2_INCOMPAT_DIRTY_BITNR,
@@ -2852,16 +2842,6 @@ int qcow2_update_header(BlockDriverState *bs)
                 .type = QCOW2_FEAT_TYPE_COMPATIBLE,
                 .bit  = QCOW2_COMPAT_LAZY_REFCOUNTS_BITNR,
                 .name = "lazy refcounts",
-            },
-            {
-                .type = QCOW2_FEAT_TYPE_AUTOCLEAR,
-                .bit  = QCOW2_AUTOCLEAR_BITMAPS_BITNR,
-                .name = "bitmaps",
-            },
-            {
-                .type = QCOW2_FEAT_TYPE_AUTOCLEAR,
-                .bit  = QCOW2_AUTOCLEAR_DATA_FILE_RAW_BITNR,
-                .name = "raw external data",
             },
         };
 
@@ -3272,7 +3252,7 @@ qcow2_co_create(BlockdevCreateOptions *create_options, Error **errp)
      * inconsistency later.
      *
      * We do need a refcount table because growing the refcount table means
-     * allocating two new refcount blocks - the second of which would be at
+     * allocating two new refcount blocks - the seconds of which would be at
      * 2 GB for 64k clusters, and we don't want to have a 2 GB initial file
      * size for any qcow2 image.
      */
@@ -3297,8 +3277,7 @@ qcow2_co_create(BlockdevCreateOptions *create_options, Error **errp)
 
     /* Validate options and set default values */
     if (!QEMU_IS_ALIGNED(qcow2_opts->size, BDRV_SECTOR_SIZE)) {
-        error_setg(errp, "Image size must be a multiple of %u bytes",
-                   (unsigned) BDRV_SECTOR_SIZE);
+        error_setg(errp, "Image size must be a multiple of 512 bytes");
         ret = -EINVAL;
         goto out;
     }
@@ -3517,7 +3496,7 @@ qcow2_co_create(BlockdevCreateOptions *create_options, Error **errp)
         goto out;
     }
 
-    /* Want a backing file? There you go. */
+    /* Want a backing file? There you go.*/
     if (qcow2_opts->has_backing_file) {
         const char *backing_format = NULL;
 
@@ -3575,9 +3554,7 @@ out:
     return ret;
 }
 
-static int coroutine_fn qcow2_co_create_opts(BlockDriver *drv,
-                                             const char *filename,
-                                             QemuOpts *opts,
+static int coroutine_fn qcow2_co_create_opts(const char *filename, QemuOpts *opts,
                                              Error **errp)
 {
     BlockdevCreateOptions *create_options = NULL;
@@ -3784,12 +3761,6 @@ static coroutine_fn int qcow2_co_pdiscard(BlockDriverState *bs,
     int ret;
     BDRVQcow2State *s = bs->opaque;
 
-    /* If the image does not support QCOW_OFLAG_ZERO then discarding
-     * clusters could expose stale data from the backing file. */
-    if (s->qcow_version < 3 && bs->backing) {
-        return -ENOTSUP;
-    }
-
     if (!QEMU_IS_ALIGNED(offset | bytes, s->cluster_size)) {
         assert(bytes < s->cluster_size);
         /* Ignore partial clusters, except for the special case of the
@@ -3862,6 +3833,10 @@ qcow2_co_copy_range_from(BlockDriverState *bs,
         case QCOW2_CLUSTER_NORMAL:
             child = s->data_file;
             copy_offset += offset_into_cluster(s, src_offset);
+            if ((copy_offset & 511) != 0) {
+                ret = -EIO;
+                goto out;
+            }
             break;
 
         default:
@@ -3923,7 +3898,7 @@ qcow2_co_copy_range_to(BlockDriverState *bs,
             goto fail;
         }
 
-        assert(offset_into_cluster(s, cluster_offset) == 0);
+        assert((cluster_offset & 511) == 0);
 
         ret = qcow2_pre_write_overlap_check(bs, 0,
                 cluster_offset + offset_in_cluster, cur_bytes, true);
@@ -3980,9 +3955,8 @@ static int coroutine_fn qcow2_co_truncate(BlockDriverState *bs, int64_t offset,
         return -ENOTSUP;
     }
 
-    if (!QEMU_IS_ALIGNED(offset, BDRV_SECTOR_SIZE)) {
-        error_setg(errp, "The new size must be a multiple of %u",
-                   (unsigned) BDRV_SECTOR_SIZE);
+    if (offset & 511) {
+        error_setg(errp, "The new size must be a multiple of 512");
         return -EINVAL;
     }
 
@@ -4248,8 +4222,10 @@ fail:
     return ret;
 }
 
+/* XXX: put compressed sectors first, then all the cluster aligned
+   tables to avoid losing bytes in alignment */
 static coroutine_fn int
-qcow2_co_pwritev_compressed_task(BlockDriverState *bs,
+qcow2_co_pwritev_compressed_part(BlockDriverState *bs,
                                  uint64_t offset, uint64_t bytes,
                                  QEMUIOVector *qiov, size_t qiov_offset)
 {
@@ -4259,11 +4235,32 @@ qcow2_co_pwritev_compressed_task(BlockDriverState *bs,
     uint8_t *buf, *out_buf;
     uint64_t cluster_offset;
 
-    assert(bytes == s->cluster_size || (bytes < s->cluster_size &&
-           (offset + bytes == bs->total_sectors << BDRV_SECTOR_BITS)));
+    if (has_data_file(bs)) {
+        return -ENOTSUP;
+    }
+
+    if (bytes == 0) {
+        /* align end of file to a sector boundary to ease reading with
+           sector based I/Os */
+        int64_t len = bdrv_getlength(bs->file->bs);
+        if (len < 0) {
+            return len;
+        }
+        return bdrv_co_truncate(bs->file, len, false, PREALLOC_MODE_OFF, NULL);
+    }
+
+    if (offset_into_cluster(s, offset)) {
+        return -EINVAL;
+    }
 
     buf = qemu_blockalign(bs, s->cluster_size);
-    if (bytes < s->cluster_size) {
+    if (bytes != s->cluster_size) {
+        if (bytes > s->cluster_size ||
+            offset + bytes != bs->total_sectors << BDRV_SECTOR_BITS)
+        {
+            qemu_vfree(buf);
+            return -EINVAL;
+        }
         /* Zero-pad last write if image size is not cluster aligned */
         memset(buf + bytes, 0, s->cluster_size - bytes);
     }
@@ -4309,82 +4306,6 @@ success:
 fail:
     qemu_vfree(buf);
     g_free(out_buf);
-    return ret;
-}
-
-static coroutine_fn int qcow2_co_pwritev_compressed_task_entry(AioTask *task)
-{
-    Qcow2AioTask *t = container_of(task, Qcow2AioTask, task);
-
-    assert(!t->cluster_type && !t->l2meta);
-
-    return qcow2_co_pwritev_compressed_task(t->bs, t->offset, t->bytes, t->qiov,
-                                            t->qiov_offset);
-}
-
-/*
- * XXX: put compressed sectors first, then all the cluster aligned
- * tables to avoid losing bytes in alignment
- */
-static coroutine_fn int
-qcow2_co_pwritev_compressed_part(BlockDriverState *bs,
-                                 uint64_t offset, uint64_t bytes,
-                                 QEMUIOVector *qiov, size_t qiov_offset)
-{
-    BDRVQcow2State *s = bs->opaque;
-    AioTaskPool *aio = NULL;
-    int ret = 0;
-
-    if (has_data_file(bs)) {
-        return -ENOTSUP;
-    }
-
-    if (bytes == 0) {
-        /*
-         * align end of file to a sector boundary to ease reading with
-         * sector based I/Os
-         */
-        int64_t len = bdrv_getlength(bs->file->bs);
-        if (len < 0) {
-            return len;
-        }
-        return bdrv_co_truncate(bs->file, len, false, PREALLOC_MODE_OFF, NULL);
-    }
-
-    if (offset_into_cluster(s, offset)) {
-        return -EINVAL;
-    }
-
-    if (offset_into_cluster(s, bytes) &&
-        (offset + bytes) != (bs->total_sectors << BDRV_SECTOR_BITS)) {
-        return -EINVAL;
-    }
-
-    while (bytes && aio_task_pool_status(aio) == 0) {
-        uint64_t chunk_size = MIN(bytes, s->cluster_size);
-
-        if (!aio && chunk_size != bytes) {
-            aio = aio_task_pool_new(QCOW2_MAX_WORKERS);
-        }
-
-        ret = qcow2_add_task(bs, aio, qcow2_co_pwritev_compressed_task_entry,
-                             0, 0, offset, chunk_size, qiov, qiov_offset, NULL);
-        if (ret < 0) {
-            break;
-        }
-        qiov_offset += chunk_size;
-        offset += chunk_size;
-        bytes -= chunk_size;
-    }
-
-    if (aio) {
-        aio_task_pool_wait_all(aio);
-        if (ret == 0) {
-            ret = aio_task_pool_status(aio);
-        }
-        g_free(aio);
-    }
-
     return ret;
 }
 
@@ -4641,6 +4562,60 @@ static coroutine_fn int qcow2_co_flush_to_os(BlockDriverState *bs)
     return ret;
 }
 
+static ssize_t qcow2_measure_crypto_hdr_init_func(QCryptoBlock *block,
+        size_t headerlen, void *opaque, Error **errp)
+{
+    size_t *headerlenp = opaque;
+
+    /* Stash away the payload size */
+    *headerlenp = headerlen;
+    return 0;
+}
+
+static ssize_t qcow2_measure_crypto_hdr_write_func(QCryptoBlock *block,
+        size_t offset, const uint8_t *buf, size_t buflen,
+        void *opaque, Error **errp)
+{
+    /* Discard the bytes, we're not actually writing to an image */
+    return buflen;
+}
+
+/* Determine the number of bytes for the LUKS payload */
+static bool qcow2_measure_luks_headerlen(QemuOpts *opts, size_t *len,
+                                         Error **errp)
+{
+    QDict *opts_qdict;
+    QDict *cryptoopts_qdict;
+    QCryptoBlockCreateOptions *cryptoopts;
+    QCryptoBlock *crypto;
+
+    /* Extract "encrypt." options into a qdict */
+    opts_qdict = qemu_opts_to_qdict(opts, NULL);
+    qdict_extract_subqdict(opts_qdict, &cryptoopts_qdict, "encrypt.");
+    qobject_unref(opts_qdict);
+
+    /* Build QCryptoBlockCreateOptions object from qdict */
+    qdict_put_str(cryptoopts_qdict, "format", "luks");
+    cryptoopts = block_crypto_create_opts_init(cryptoopts_qdict, errp);
+    qobject_unref(cryptoopts_qdict);
+    if (!cryptoopts) {
+        return false;
+    }
+
+    /* Fake LUKS creation in order to determine the payload size */
+    crypto = qcrypto_block_create(cryptoopts, "encrypt.",
+                                  qcow2_measure_crypto_hdr_init_func,
+                                  qcow2_measure_crypto_hdr_write_func,
+                                  len, errp);
+    qapi_free_QCryptoBlockCreateOptions(cryptoopts);
+    if (!crypto) {
+        return false;
+    }
+
+    qcrypto_block_free(crypto);
+    return true;
+}
+
 static BlockMeasureInfo *qcow2_measure(QemuOpts *opts, BlockDriverState *in_bs,
                                        Error **errp)
 {
@@ -4691,27 +4666,9 @@ static BlockMeasureInfo *qcow2_measure(QemuOpts *opts, BlockDriverState *in_bs,
     g_free(optstr);
 
     if (has_luks) {
-        g_autoptr(QCryptoBlockCreateOptions) create_opts = NULL;
-        QDict *opts_qdict;
-        QDict *cryptoopts;
         size_t headerlen;
 
-        opts_qdict = qemu_opts_to_qdict(opts, NULL);
-        qdict_extract_subqdict(opts_qdict, &cryptoopts, "encrypt.");
-        qobject_unref(opts_qdict);
-
-        qdict_put_str(cryptoopts, "format", "luks");
-
-        create_opts = block_crypto_create_opts_init(cryptoopts, errp);
-        qobject_unref(cryptoopts);
-        if (!create_opts) {
-            goto err;
-        }
-
-        if (!qcrypto_block_calculate_payload_offset(create_opts,
-                                                    "encrypt.",
-                                                    &headerlen,
-                                                    &local_err)) {
+        if (!qcow2_measure_luks_headerlen(opts, &headerlen, &local_err)) {
             goto err;
         }
 
@@ -4843,7 +4800,6 @@ static ImageInfoSpecific *qcow2_get_specific_info(BlockDriverState *bs,
         if (local_err) {
             error_propagate(errp, local_err);
             qapi_free_ImageInfoSpecific(spec_info);
-            qapi_free_QCryptoBlockInfo(encrypt_info);
             return NULL;
         }
         *spec_info->u.qcow2.data = (ImageInfoSpecificQCow2){
@@ -5536,7 +5492,6 @@ BlockDriver bdrv_qcow2 = {
     .bdrv_close         = qcow2_close,
     .bdrv_reopen_prepare  = qcow2_reopen_prepare,
     .bdrv_reopen_commit   = qcow2_reopen_commit,
-    .bdrv_reopen_commit_post = qcow2_reopen_commit_post,
     .bdrv_reopen_abort    = qcow2_reopen_abort,
     .bdrv_join_options    = qcow2_join_options,
     .bdrv_child_perm      = bdrv_format_default_perms,

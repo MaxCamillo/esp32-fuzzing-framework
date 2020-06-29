@@ -1475,7 +1475,7 @@ static void nvme_class_init(ObjectClass *oc, void *data)
 
     set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
     dc->desc = "Non-Volatile Memory Express";
-    device_class_set_props(dc, nvme_props);
+    dc->props = nvme_props;
     dc->vmsd = &nvme_vmstate;
 }
 

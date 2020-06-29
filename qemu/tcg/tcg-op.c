@@ -25,9 +25,9 @@
 #include "qemu/osdep.h"
 #include "cpu.h"
 #include "exec/exec-all.h"
-#include "tcg/tcg.h"
-#include "tcg/tcg-op.h"
-#include "tcg/tcg-mo.h"
+#include "tcg.h"
+#include "tcg-op.h"
+#include "tcg-mo.h"
 #include "trace-tcg.h"
 #include "trace/mem.h"
 #include "exec/plugin-gen.h"
@@ -240,6 +240,7 @@ void tcg_gen_brcond_i32(TCGCond cond, TCGv_i32 arg1, TCGv_i32 arg2, TCGLabel *l)
     if (cond == TCG_COND_ALWAYS) {
         tcg_gen_br(l);
     } else if (cond != TCG_COND_NEVER) {
+        hfuzz_qemu_gen_trace_cmp_tl(arg1, arg2); 
         l->refs++;
         tcg_gen_op4ii_i32(INDEX_op_brcond_i32, arg1, arg2, cond, label_arg(l));
     }
@@ -2794,26 +2795,13 @@ static void tcg_gen_req_mo(TCGBar type)
     }
 }
 
-static inline TCGv plugin_prep_mem_callbacks(TCGv vaddr)
-{
-#ifdef CONFIG_PLUGIN
-    if (tcg_ctx->plugin_insn != NULL) {
-        /* Save a copy of the vaddr for use after a load.  */
-        TCGv temp = tcg_temp_new();
-        tcg_gen_mov_tl(temp, vaddr);
-        return temp;
-    }
-#endif
-    return vaddr;
-}
-
 static inline void plugin_gen_mem_callbacks(TCGv vaddr, uint16_t info)
 {
 #ifdef CONFIG_PLUGIN
-    if (tcg_ctx->plugin_insn != NULL) {
-        plugin_gen_empty_mem_callback(vaddr, info);
-        tcg_temp_free(vaddr);
+    if (tcg_ctx->plugin_insn == NULL) {
+        return;
     }
+    plugin_gen_empty_mem_callback(vaddr, info);
 #endif
 }
 
@@ -2835,7 +2823,6 @@ void tcg_gen_qemu_ld_i32(TCGv_i32 val, TCGv addr, TCGArg idx, MemOp memop)
         }
     }
 
-    addr = plugin_prep_mem_callbacks(addr);
     gen_ldst_i32(INDEX_op_qemu_ld_i32, val, addr, memop, idx);
     plugin_gen_mem_callbacks(addr, info);
 
@@ -2882,7 +2869,6 @@ void tcg_gen_qemu_st_i32(TCGv_i32 val, TCGv addr, TCGArg idx, MemOp memop)
         memop &= ~MO_BSWAP;
     }
 
-    addr = plugin_prep_mem_callbacks(addr);
     gen_ldst_i32(INDEX_op_qemu_st_i32, val, addr, memop, idx);
     plugin_gen_mem_callbacks(addr, info);
 
@@ -2920,7 +2906,6 @@ void tcg_gen_qemu_ld_i64(TCGv_i64 val, TCGv addr, TCGArg idx, MemOp memop)
         }
     }
 
-    addr = plugin_prep_mem_callbacks(addr);
     gen_ldst_i64(INDEX_op_qemu_ld_i64, val, addr, memop, idx);
     plugin_gen_mem_callbacks(addr, info);
 
@@ -2983,7 +2968,6 @@ void tcg_gen_qemu_st_i64(TCGv_i64 val, TCGv addr, TCGArg idx, MemOp memop)
         memop &= ~MO_BSWAP;
     }
 
-    addr = plugin_prep_mem_callbacks(addr);
     gen_ldst_i64(INDEX_op_qemu_st_i64, val, addr, memop, idx);
     plugin_gen_mem_callbacks(addr, info);
 
@@ -3347,3 +3331,35 @@ static void tcg_gen_mov2_i64(TCGv_i64 r, TCGv_i64 a, TCGv_i64 b)
 GEN_ATOMIC_HELPER(xchg, mov2, 0)
 
 #undef GEN_ATOMIC_HELPER
+
+extern __thread target_ulong hfuzz_qemu_instrumentation_address;
+
+void hfuzz_qemu_gen_trace_cmp_i64(TCGv_i64 arg1, TCGv_i64 arg2) {
+  TCGv_i64 cur_loc;
+
+  if (!hfuzz_qemu_instrumentation_address) {
+    return;
+  }
+
+  // This is needed for colliding CMPs (?)
+  cur_loc = tcg_const_i64(hfuzz_qemu_instrumentation_address++);
+
+  gen_helper_hfuzz_qemu_trace_cmp_i64(cur_loc, arg1, arg2);
+
+  tcg_temp_free_i64(cur_loc);
+}
+
+void hfuzz_qemu_gen_trace_cmp_i32(TCGv_i32 arg1, TCGv_i32 arg2) {
+  TCGv_i32 cur_loc;
+
+  if (!hfuzz_qemu_instrumentation_address) {
+    return;
+  }
+
+  // This is needed for colliding CMPs (?)
+  cur_loc = tcg_const_i32(hfuzz_qemu_instrumentation_address++);
+
+  gen_helper_hfuzz_qemu_trace_cmp_i32(cur_loc, arg1, arg2);
+
+  tcg_temp_free_i32(cur_loc);
+}

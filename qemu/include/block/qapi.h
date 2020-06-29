@@ -29,9 +29,7 @@
 #include "block/snapshot.h"
 
 BlockDeviceInfo *bdrv_block_device_info(BlockBackend *blk,
-                                        BlockDriverState *bs,
-                                        bool flat,
-                                        Error **errp);
+                                        BlockDriverState *bs, Error **errp);
 int bdrv_query_snapshot_info_list(BlockDriverState *bs,
                                   SnapshotInfoList **p_list,
                                   Error **errp);

@@ -99,7 +99,6 @@ static uint64_t memory_device_get_free_addr(MachineState *ms,
                                             uint64_t align, uint64_t size,
                                             Error **errp)
 {
-    Error *err = NULL;
     GSList *list = NULL, *item;
     Range as, new = range_empty;
 
@@ -124,9 +123,8 @@ static uint64_t memory_device_get_free_addr(MachineState *ms,
         return 0;
     }
 
-    memory_device_check_addable(ms, size, &err);
-    if (err) {
-        error_propagate(errp, err);
+    memory_device_check_addable(ms, size, errp);
+    if (*errp) {
         return 0;
     }
 

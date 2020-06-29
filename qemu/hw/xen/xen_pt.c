@@ -65,8 +65,6 @@
 #include "qemu/range.h"
 #include "exec/address-spaces.h"
 
-bool has_igd_gfx_passthru;
-
 #define XEN_PT_NR_IRQS (256)
 static uint8_t xen_pt_mapped_machine_irq[XEN_PT_NR_IRQS] = {0};
 
@@ -964,7 +962,7 @@ static void xen_pci_passthrough_class_init(ObjectClass *klass, void *data)
     k->config_write = xen_pt_pci_write_config;
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
     dc->desc = "Assign an host PCI device with Xen";
-    device_class_set_props(dc, xen_pci_passthrough_properties);
+    dc->props = xen_pci_passthrough_properties;
 };
 
 static void xen_pci_passthrough_finalize(Object *obj)

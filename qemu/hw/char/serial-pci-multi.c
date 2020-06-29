@@ -56,7 +56,7 @@ static void multi_serial_pci_exit(PCIDevice *dev)
 
     for (i = 0; i < pci->ports; i++) {
         s = pci->state + i;
-        object_property_set_bool(OBJECT(s), false, "realized", NULL);
+        serial_exit_core(s);
         memory_region_del_subregion(&pci->iobar, &s->io);
         g_free(pci->name[i]);
     }
@@ -77,43 +77,43 @@ static void multi_serial_irq_mux(void *opaque, int n, int level)
     pci_set_irq(&pci->dev, pending);
 }
 
-static size_t multi_serial_get_port_count(PCIDeviceClass *pc)
-{
-    switch (pc->device_id) {
-    case 0x0003:
-        return 2;
-    case 0x0004:
-        return 4;
-    }
-
-    g_assert_not_reached();
-}
-
-
 static void multi_serial_pci_realize(PCIDevice *dev, Error **errp)
 {
     PCIDeviceClass *pc = PCI_DEVICE_GET_CLASS(dev);
     PCIMultiSerialState *pci = DO_UPCAST(PCIMultiSerialState, dev, dev);
     SerialState *s;
     Error *err = NULL;
-    size_t i, nports = multi_serial_get_port_count(pc);
+    int i, nr_ports = 0;
+
+    switch (pc->device_id) {
+    case 0x0003:
+        nr_ports = 2;
+        break;
+    case 0x0004:
+        nr_ports = 4;
+        break;
+    }
+    assert(nr_ports > 0);
+    assert(nr_ports <= PCI_SERIAL_MAX_PORTS);
 
     pci->dev.config[PCI_CLASS_PROG] = pci->prog_if;
     pci->dev.config[PCI_INTERRUPT_PIN] = 0x01;
-    memory_region_init(&pci->iobar, OBJECT(pci), "multiserial", 8 * nports);
+    memory_region_init(&pci->iobar, OBJECT(pci), "multiserial", 8 * nr_ports);
     pci_register_bar(&pci->dev, 0, PCI_BASE_ADDRESS_SPACE_IO, &pci->iobar);
-    pci->irqs = qemu_allocate_irqs(multi_serial_irq_mux, pci, nports);
+    pci->irqs = qemu_allocate_irqs(multi_serial_irq_mux, pci,
+                                   nr_ports);
 
-    for (i = 0; i < nports; i++) {
+    for (i = 0; i < nr_ports; i++) {
         s = pci->state + i;
-        object_property_set_bool(OBJECT(s), true, "realized", &err);
+        s->baudbase = 115200;
+        serial_realize_core(s, &err);
         if (err != NULL) {
             error_propagate(errp, err);
             multi_serial_pci_exit(dev);
             return;
         }
         s->irq = pci->irqs[i];
-        pci->name[i] = g_strdup_printf("uart #%zu", i + 1);
+        pci->name[i] = g_strdup_printf("uart #%d", i + 1);
         memory_region_init_io(&s->io, OBJECT(pci), &serial_io_ops, s,
                               pci->name[i], 8);
         memory_region_add_subregion(&pci->iobar, 8 * i, &s->io);
@@ -161,7 +161,7 @@ static void multi_2x_serial_pci_class_initfn(ObjectClass *klass, void *data)
     pc->revision = 1;
     pc->class_id = PCI_CLASS_COMMUNICATION_SERIAL;
     dc->vmsd = &vmstate_pci_multi_serial;
-    device_class_set_props(dc, multi_2x_serial_pci_properties);
+    dc->props = multi_2x_serial_pci_properties;
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
 }
 
@@ -176,28 +176,14 @@ static void multi_4x_serial_pci_class_initfn(ObjectClass *klass, void *data)
     pc->revision = 1;
     pc->class_id = PCI_CLASS_COMMUNICATION_SERIAL;
     dc->vmsd = &vmstate_pci_multi_serial;
-    device_class_set_props(dc, multi_4x_serial_pci_properties);
+    dc->props = multi_4x_serial_pci_properties;
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
-}
-
-static void multi_serial_init(Object *o)
-{
-    PCIDevice *dev = PCI_DEVICE(o);
-    PCIMultiSerialState *pms = DO_UPCAST(PCIMultiSerialState, dev, dev);
-    size_t i, nports = multi_serial_get_port_count(PCI_DEVICE_GET_CLASS(dev));
-
-    for (i = 0; i < nports; i++) {
-        object_initialize_child(o, "serial[*]", &pms->state[i],
-                                sizeof(pms->state[i]),
-                                TYPE_SERIAL, &error_abort, NULL);
-    }
 }
 
 static const TypeInfo multi_2x_serial_pci_info = {
     .name          = "pci-serial-2x",
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PCIMultiSerialState),
-    .instance_init = multi_serial_init,
     .class_init    = multi_2x_serial_pci_class_initfn,
     .interfaces = (InterfaceInfo[]) {
         { INTERFACE_CONVENTIONAL_PCI_DEVICE },
@@ -209,7 +195,6 @@ static const TypeInfo multi_4x_serial_pci_info = {
     .name          = "pci-serial-4x",
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PCIMultiSerialState),
-    .instance_init = multi_serial_init,
     .class_init    = multi_4x_serial_pci_class_initfn,
     .interfaces = (InterfaceInfo[]) {
         { INTERFACE_CONVENTIONAL_PCI_DEVICE },

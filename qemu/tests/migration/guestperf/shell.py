@@ -1,3 +1,4 @@
+from __future__ import print_function
 #
 # Migration test command line shell integration
 #

@@ -27,6 +27,7 @@
 #include "migration/qemu-file-types.h"
 #include "migration/vmstate.h"
 #include "sysemu/sysemu.h"
+#include "ui/console.h"
 #include "qemu/bcd.h"
 #include "qemu/module.h"
 

@@ -25,7 +25,6 @@
 #include "exec/helper-proto.h"
 #include "tcg/tcg-gvec-desc.h"
 #include "fpu/softfloat.h"
-#include "tcg/tcg.h"
 
 
 /* Note that vector data is stored in host-endian 64-bit chunks,

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 #
 # Test VPC and file image creation
 #
@@ -22,6 +22,15 @@ import iotests
 from iotests import imgfmt
 
 
+def blockdev_create(vm, options):
+    result = vm.qmp_log('blockdev-create', job_id='job0', options=options,
+                        filters=[iotests.filter_qmp_testfiles])
+
+    if 'return' in result:
+        assert result['return'] == {}
+        vm.run_job('job0')
+
+
 # Successful image creation (defaults)
 def implicit_defaults(vm, file_path):
     iotests.log("=== Successful image creation (defaults) ===")
@@ -31,9 +40,9 @@ def implicit_defaults(vm, file_path):
     # (Close to 64 MB)
     size = 8 * 964 * 17 * 512
 
-    vm.blockdev_create({ 'driver': imgfmt,
-                         'file': 'protocol-node',
-                         'size': size })
+    blockdev_create(vm, { 'driver': imgfmt,
+                          'file': 'protocol-node',
+                          'size': size })
 
 
 # Successful image creation (explicit defaults)
@@ -45,11 +54,11 @@ def explicit_defaults(vm, file_path):
     # (Close to 128 MB)
     size = 16 * 964 * 17 * 512
 
-    vm.blockdev_create({ 'driver': imgfmt,
-                         'file': 'protocol-node',
-                         'size': size,
-                         'subformat': 'dynamic',
-                         'force-size': False })
+    blockdev_create(vm, { 'driver': imgfmt,
+                          'file': 'protocol-node',
+                          'size': size,
+                          'subformat': 'dynamic',
+                          'force-size': False })
 
 
 # Successful image creation (non-default options)
@@ -60,11 +69,11 @@ def non_defaults(vm, file_path):
     # Not representable in CHS (fine with force-size=True)
     size = 1048576
 
-    vm.blockdev_create({ 'driver': imgfmt,
-                         'file': 'protocol-node',
-                         'size': size,
-                         'subformat': 'fixed',
-                         'force-size': True })
+    blockdev_create(vm, { 'driver': imgfmt,
+                          'file': 'protocol-node',
+                          'size': size,
+                          'subformat': 'fixed',
+                          'force-size': True })
 
 
 # Size not representable in CHS with force-size=False
@@ -75,10 +84,10 @@ def non_chs_size_without_force(vm, file_path):
     # Not representable in CHS (will not work with force-size=False)
     size = 1048576
 
-    vm.blockdev_create({ 'driver': imgfmt,
-                         'file': 'protocol-node',
-                         'size': size,
-                         'force-size': False })
+    blockdev_create(vm, { 'driver': imgfmt,
+                          'file': 'protocol-node',
+                          'size': size,
+                          'force-size': False })
 
 
 # Zero size
@@ -86,9 +95,9 @@ def zero_size(vm, file_path):
     iotests.log("=== Zero size===")
     iotests.log("")
 
-    vm.blockdev_create({ 'driver': imgfmt,
-                         'file': 'protocol-node',
-                         'size': 0 })
+    blockdev_create(vm, { 'driver': imgfmt,
+                          'file': 'protocol-node',
+                          'size': 0 })
 
 
 # Maximum CHS size
@@ -96,9 +105,9 @@ def maximum_chs_size(vm, file_path):
     iotests.log("=== Maximum CHS size===")
     iotests.log("")
 
-    vm.blockdev_create({ 'driver': imgfmt,
-                         'file': 'protocol-node',
-                         'size': 16 * 65535 * 255 * 512 })
+    blockdev_create(vm, { 'driver': imgfmt,
+                          'file': 'protocol-node',
+                          'size': 16 * 65535 * 255 * 512 })
 
 
 # Actual maximum size
@@ -106,10 +115,10 @@ def maximum_size(vm, file_path):
     iotests.log("=== Actual maximum size===")
     iotests.log("")
 
-    vm.blockdev_create({ 'driver': imgfmt,
-                         'file': 'protocol-node',
-                         'size': 0xff000000 * 512,
-                         'force-size': True })
+    blockdev_create(vm, { 'driver': imgfmt,
+                          'file': 'protocol-node',
+                          'size': 0xff000000 * 512,
+                          'force-size': True })
 
 
 def main():
@@ -123,9 +132,9 @@ def main():
             vm.launch()
 
             iotests.log('--- Creating empty file ---')
-            vm.blockdev_create({ 'driver': 'file',
-                                 'filename': file_path,
-                                 'size': 0 })
+            blockdev_create(vm, { 'driver': 'file',
+                                  'filename': file_path,
+                                  'size': 0 })
 
             vm.qmp_log('blockdev-add', driver='file', filename=file_path,
                        node_name='protocol-node',

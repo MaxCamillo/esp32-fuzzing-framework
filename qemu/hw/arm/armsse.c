@@ -1283,7 +1283,7 @@ static void armsse_class_init(ObjectClass *klass, void *data)
 
     dc->realize = armsse_realize;
     dc->vmsd = &armsse_vmstate;
-    device_class_set_props(dc, info->props);
+    dc->props = info->props;
     dc->reset = armsse_reset;
     iic->check = armsse_idau_check;
     asc->info = info;

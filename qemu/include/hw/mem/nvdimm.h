@@ -25,7 +25,6 @@
 
 #include "hw/mem/pc-dimm.h"
 #include "hw/acpi/bios-linker-loader.h"
-#include "qemu/uuid.h"
 
 #define NVDIMM_DEBUG 0
 #define nvdimm_debug(fmt, ...)                                \
@@ -50,7 +49,6 @@
                                                TYPE_NVDIMM)
 
 #define NVDIMM_LABEL_SIZE_PROP "label-size"
-#define NVDIMM_UUID_PROP       "uuid"
 #define NVDIMM_UNARMED_PROP    "unarmed"
 
 struct NVDIMMDevice {
@@ -85,11 +83,6 @@ struct NVDIMMDevice {
      * the guest write persistence.
      */
     bool unarmed;
-
-    /*
-     * The PPC64 - spapr requires each nvdimm device have a uuid.
-     */
-    QemuUUID uuid;
 };
 typedef struct NVDIMMDevice NVDIMMDevice;
 

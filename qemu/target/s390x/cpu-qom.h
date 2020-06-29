@@ -34,12 +34,6 @@
 typedef struct S390CPUModel S390CPUModel;
 typedef struct S390CPUDef S390CPUDef;
 
-typedef enum cpu_reset_type {
-    S390_CPU_RESET_NORMAL,
-    S390_CPU_RESET_INITIAL,
-    S390_CPU_RESET_CLEAR,
-} cpu_reset_type;
-
 /**
  * S390CPUClass:
  * @parent_realize: The parent class' realize handler.
@@ -61,9 +55,10 @@ typedef struct S390CPUClass {
     const char *desc;
 
     DeviceRealize parent_realize;
-    DeviceReset parent_reset;
+    void (*parent_reset)(CPUState *cpu);
     void (*load_normal)(CPUState *cpu);
-    void (*reset)(CPUState *cpu, cpu_reset_type type);
+    void (*cpu_reset)(CPUState *cpu);
+    void (*initial_cpu_reset)(CPUState *cpu);
 } S390CPUClass;
 
 typedef struct S390CPU S390CPU;

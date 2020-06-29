@@ -34,13 +34,13 @@ static BlockJob *mk_job(BlockBackend *blk, const char *id,
                         int flags)
 {
     BlockJob *job;
-    Error *err = NULL;
+    Error *errp = NULL;
 
     job = block_job_create(id, drv, NULL, blk_bs(blk),
                            0, BLK_PERM_ALL, 0, flags, block_job_cb,
-                           NULL, &err);
+                           NULL, &errp);
     if (should_succeed) {
-        g_assert_null(err);
+        g_assert_null(errp);
         g_assert_nonnull(job);
         if (id) {
             g_assert_cmpstr(job->job.id, ==, id);
@@ -48,8 +48,9 @@ static BlockJob *mk_job(BlockBackend *blk, const char *id,
             g_assert_cmpstr(job->job.id, ==, blk_name(blk));
         }
     } else {
-        error_free_or_abort(&err);
+        g_assert_nonnull(errp);
         g_assert_null(job);
+        error_free(errp);
     }
 
     return job;
@@ -79,9 +80,9 @@ static BlockBackend *create_blk(const char *name)
     bdrv_unref(bs);
 
     if (name) {
-        Error *err = NULL;
-        monitor_add_blk(blk, name, &err);
-        g_assert_null(err);
+        Error *errp = NULL;
+        monitor_add_blk(blk, name, &errp);
+        g_assert_null(errp);
     }
 
     return blk;
@@ -367,9 +368,7 @@ static void test_cancel_concluded(void)
     aio_poll(qemu_get_aio_context(), true);
     assert(job->status == JOB_STATUS_PENDING);
 
-    aio_context_acquire(job->aio_context);
     job_finalize(job, &error_abort);
-    aio_context_release(job->aio_context);
     assert(job->status == JOB_STATUS_CONCLUDED);
 
     cancel_common(s);

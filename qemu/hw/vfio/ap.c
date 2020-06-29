@@ -89,13 +89,14 @@ static void vfio_ap_realize(DeviceState *dev, Error **errp)
 {
     int ret;
     char *mdevid;
+    Error *local_err = NULL;
     VFIOGroup *vfio_group;
     APDevice *apdev = AP_DEVICE(dev);
     VFIOAPDevice *vapdev = VFIO_AP_DEVICE(apdev);
 
-    vfio_group = vfio_ap_get_group(vapdev, errp);
+    vfio_group = vfio_ap_get_group(vapdev, &local_err);
     if (!vfio_group) {
-        return;
+        goto out_err;
     }
 
     vapdev->vdev.ops = &vfio_ap_ops;
@@ -112,7 +113,7 @@ static void vfio_ap_realize(DeviceState *dev, Error **errp)
      */
     vapdev->vdev.balloon_allowed = true;
 
-    ret = vfio_get_device(vfio_group, mdevid, &vapdev->vdev, errp);
+    ret = vfio_get_device(vfio_group, mdevid, &vapdev->vdev, &local_err);
     if (ret) {
         goto out_get_dev_err;
     }
@@ -122,6 +123,8 @@ static void vfio_ap_realize(DeviceState *dev, Error **errp)
 out_get_dev_err:
     vfio_ap_put_device(vapdev);
     vfio_put_group(vfio_group);
+out_err:
+    error_propagate(errp, local_err);
 }
 
 static void vfio_ap_unrealize(DeviceState *dev, Error **errp)
@@ -161,7 +164,7 @@ static void vfio_ap_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    device_class_set_props(dc, vfio_ap_properties);
+    dc->props = vfio_ap_properties;
     dc->vmsd = &vfio_ap_vmstate;
     dc->desc = "VFIO-based AP device assignment";
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);

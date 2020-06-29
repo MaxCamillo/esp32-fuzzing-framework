@@ -28,7 +28,10 @@
 #include "qemu/error-report.h"
 #include "qapi/error.h"
 
-struct OMAPI2CState {
+#define TYPE_OMAP_I2C "omap_i2c"
+#define OMAP_I2C(obj) OBJECT_CHECK(OMAPI2CState, (obj), TYPE_OMAP_I2C)
+
+typedef struct OMAPI2CState {
     SysBusDevice parent_obj;
 
     MemoryRegion iomem;
@@ -53,7 +56,7 @@ struct OMAPI2CState {
     uint8_t divider;
     uint8_t times[2];
     uint16_t test;
-};
+} OMAPI2CState;
 
 #define OMAP2_INTR_REV	0x34
 #define OMAP2_GC_REV	0x34
@@ -501,18 +504,10 @@ static void omap_i2c_realize(DeviceState *dev, Error **errp)
     }
 }
 
-void omap_i2c_set_iclk(OMAPI2CState *i2c, omap_clk clk)
-{
-    i2c->iclk = clk;
-}
-
-void omap_i2c_set_fclk(OMAPI2CState *i2c, omap_clk clk)
-{
-    i2c->fclk = clk;
-}
-
 static Property omap_i2c_properties[] = {
     DEFINE_PROP_UINT8("revision", OMAPI2CState, revision, 0),
+    DEFINE_PROP_PTR("iclk", OMAPI2CState, iclk),
+    DEFINE_PROP_PTR("fclk", OMAPI2CState, fclk),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -520,7 +515,7 @@ static void omap_i2c_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    device_class_set_props(dc, omap_i2c_properties);
+    dc->props = omap_i2c_properties;
     dc->reset = omap_i2c_reset;
     /* Reason: pointer properties "iclk", "fclk" */
     dc->user_creatable = false;

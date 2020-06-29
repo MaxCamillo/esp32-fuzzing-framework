@@ -91,10 +91,6 @@ config TCX
 config CG3
     bool
 
-config ARTIST
-    bool
-    select FRAMEBUFFER
-
 config VGA
     bool
 

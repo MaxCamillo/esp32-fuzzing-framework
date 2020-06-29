@@ -1164,8 +1164,7 @@ static void fimd_update_memory_section(Exynos4210fimdState *s, unsigned win)
         goto error_return;
     }
 
-    w->host_fb_addr = cpu_physical_memory_map(fb_start_addr, &fb_mapped_len,
-                                              false);
+    w->host_fb_addr = cpu_physical_memory_map(fb_start_addr, &fb_mapped_len, 0);
     if (!w->host_fb_addr) {
         DPRINT_ERROR("Failed to map window %u framebuffer\n", win);
         goto error_return;
@@ -1311,6 +1310,7 @@ static void exynos4210_fimd_update(void *opaque)
                 }
                 host_fb_addr += inc_size;
                 fb_line_addr += inc_size;
+                is_dirty = false;
             }
             g_free(snap);
             blend = true;

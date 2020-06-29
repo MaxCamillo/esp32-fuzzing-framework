@@ -1,0 +1,1 @@
+./configure --target-list=xtensa-softmmu     --enable-debug --enable-sanitizers     --disable-strip --disable-user     --disable-capstone --disable-vnc     --disable-sdl --disable-gtk --honggfuzz-path=~/thesis/honggfuzz

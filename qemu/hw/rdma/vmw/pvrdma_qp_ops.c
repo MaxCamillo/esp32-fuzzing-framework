@@ -34,13 +34,13 @@ typedef struct CompHandlerCtx {
 /* Send Queue WQE */
 typedef struct PvrdmaSqWqe {
     struct pvrdma_sq_wqe_hdr hdr;
-    struct pvrdma_sge sge[];
+    struct pvrdma_sge sge[0];
 } PvrdmaSqWqe;
 
 /* Recv Queue WQE */
 typedef struct PvrdmaRqWqe {
     struct pvrdma_rq_wqe_hdr hdr;
-    struct pvrdma_sge sge[];
+    struct pvrdma_sge sge[0];
 } PvrdmaRqWqe;
 
 /*

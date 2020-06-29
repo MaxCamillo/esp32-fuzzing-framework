@@ -207,9 +207,9 @@ static void cmd646_set_irq(void *opaque, int channel, int level)
     cmd646_update_irq(pd);
 }
 
-static void cmd646_reset(DeviceState *dev)
+static void cmd646_reset(void *opaque)
 {
-    PCIIDEState *d = PCI_IDE(dev);
+    PCIIDEState *d = opaque;
     unsigned int i;
 
     for (i = 0; i < 2; i++) {
@@ -249,8 +249,8 @@ static void cmd646_pci_config_write(PCIDevice *d, uint32_t addr, uint32_t val,
 static void pci_cmd646_ide_realize(PCIDevice *dev, Error **errp)
 {
     PCIIDEState *d = PCI_IDE(dev);
-    DeviceState *ds = DEVICE(dev);
     uint8_t *pci_conf = dev->config;
+    qemu_irq *irq;
     int i;
 
     pci_conf[PCI_CLASS_PROG] = 0x8f;
@@ -291,15 +291,19 @@ static void pci_cmd646_ide_realize(PCIDevice *dev, Error **errp)
     /* TODO: RST# value should be 0 */
     pci_conf[PCI_INTERRUPT_PIN] = 0x01; // interrupt on pin 1
 
-    qdev_init_gpio_in(ds, cmd646_set_irq, 2);
+    irq = qemu_allocate_irqs(cmd646_set_irq, d, 2);
     for (i = 0; i < 2; i++) {
-        ide_bus_new(&d->bus[i], sizeof(d->bus[i]), ds, i, 2);
-        ide_init2(&d->bus[i], qdev_get_gpio_in(ds, i));
+        ide_bus_new(&d->bus[i], sizeof(d->bus[i]), DEVICE(dev), i, 2);
+        ide_init2(&d->bus[i], irq[i]);
 
         bmdma_init(&d->bus[i], &d->bmdma[i], d);
         d->bmdma[i].bus = &d->bus[i];
         ide_register_restart_cb(&d->bus[i]);
     }
+    g_free(irq);
+
+    vmstate_register(DEVICE(dev), 0, &vmstate_ide_pci, d);
+    qemu_register_reset(cmd646_reset, d);
 }
 
 static void pci_cmd646_ide_exitfn(PCIDevice *dev)
@@ -313,6 +317,18 @@ static void pci_cmd646_ide_exitfn(PCIDevice *dev)
     }
 }
 
+void pci_cmd646_ide_init(PCIBus *bus, DriveInfo **hd_table,
+                         int secondary_ide_enabled)
+{
+    PCIDevice *dev;
+
+    dev = pci_create(bus, -1, "cmd646-ide");
+    qdev_prop_set_uint32(&dev->qdev, "secondary", secondary_ide_enabled);
+    qdev_init_nofail(&dev->qdev);
+
+    pci_ide_create_devs(dev, hd_table);
+}
+
 static Property cmd646_ide_properties[] = {
     DEFINE_PROP_UINT32("secondary", PCIIDEState, secondary, 0),
     DEFINE_PROP_END_OF_LIST(),
@@ -323,8 +339,6 @@ static void cmd646_ide_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    dc->reset = cmd646_reset;
-    dc->vmsd = &vmstate_ide_pci;
     k->realize = pci_cmd646_ide_realize;
     k->exit = pci_cmd646_ide_exitfn;
     k->vendor_id = PCI_VENDOR_ID_CMD;
@@ -333,7 +347,7 @@ static void cmd646_ide_class_init(ObjectClass *klass, void *data)
     k->class_id = PCI_CLASS_STORAGE_IDE;
     k->config_read = cmd646_pci_config_read;
     k->config_write = cmd646_pci_config_write;
-    device_class_set_props(dc, cmd646_ide_properties);
+    dc->props = cmd646_ide_properties;
     set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
 }
 

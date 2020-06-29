@@ -76,7 +76,8 @@ QEMU_BUILD_BUG_ON(offsetof(qemu_can_frame, data)
 static void can_host_socketcan_display_msg(struct qemu_can_frame *msg)
 {
     int i;
-    FILE *logfile = qemu_log_lock();
+
+    qemu_log_lock();
     qemu_log("[cansocketcan]: %03X [%01d] %s %s",
              msg->can_id & QEMU_CAN_EFF_MASK,
              msg->can_dlc,
@@ -88,7 +89,7 @@ static void can_host_socketcan_display_msg(struct qemu_can_frame *msg)
     }
     qemu_log("\n");
     qemu_log_flush();
-    qemu_log_unlock(logfile);
+    qemu_log_unlock();
 }
 
 static void can_host_socketcan_read(void *opaque)
@@ -110,9 +111,9 @@ static void can_host_socketcan_read(void *opaque)
     }
 }
 
-static bool can_host_socketcan_can_receive(CanBusClientState *client)
+static int can_host_socketcan_can_receive(CanBusClientState *client)
 {
-    return true;
+    return 1;
 }
 
 static ssize_t can_host_socketcan_receive(CanBusClientState *client,

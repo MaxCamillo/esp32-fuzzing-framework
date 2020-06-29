@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
 # Dump the contents of a recorded execution stream
@@ -18,6 +18,7 @@
 # You should have received a copy of the GNU Lesser General Public
 # License along with this library; if not, see <http://www.gnu.org/licenses/>.
 
+from __future__ import print_function
 import argparse
 import struct
 from collections import namedtuple

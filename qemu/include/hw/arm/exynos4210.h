@@ -24,7 +24,6 @@
 #ifndef EXYNOS4210_H
 #define EXYNOS4210_H
 
-#include "hw/or-irq.h"
 #include "hw/sysbus.h"
 #include "target/arm/cpu-qom.h"
 
@@ -75,8 +74,6 @@
 
 #define EXYNOS4210_I2C_NUMBER               9
 
-#define EXYNOS4210_NUM_DMA      3
-
 typedef struct Exynos4210Irq {
     qemu_irq int_combiner_irq[EXYNOS4210_MAX_INT_COMBINER_IN_IRQ];
     qemu_irq ext_combiner_irq[EXYNOS4210_MAX_EXT_COMBINER_IN_IRQ];
@@ -100,7 +97,6 @@ typedef struct Exynos4210State {
     MemoryRegion boot_secondary;
     MemoryRegion bootreg_mem;
     I2CBus *i2c_if[EXYNOS4210_I2C_NUMBER];
-    qemu_or_irq pl330_irq_orgate[EXYNOS4210_NUM_DMA];
 } Exynos4210State;
 
 #define TYPE_EXYNOS4210_SOC "exynos4210"

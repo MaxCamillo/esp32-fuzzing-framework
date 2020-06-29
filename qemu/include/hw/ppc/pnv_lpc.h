@@ -31,9 +31,6 @@
 #define TYPE_PNV9_LPC TYPE_PNV_LPC "-POWER9"
 #define PNV9_LPC(obj) OBJECT_CHECK(PnvLpcController, (obj), TYPE_PNV9_LPC)
 
-#define TYPE_PNV10_LPC TYPE_PNV_LPC "-POWER10"
-#define PNV10_LPC(obj) OBJECT_CHECK(PnvLpcController, (obj), TYPE_PNV10_LPC)
-
 typedef struct PnvLpcController {
     DeviceState parent;
 
@@ -100,7 +97,6 @@ typedef struct PnvLpcClass {
 struct PnvChip;
 
 ISABus *pnv_lpc_isa_create(PnvLpcController *lpc, bool use_cpld, Error **errp);
-int pnv_dt_lpc(struct PnvChip *chip, void *fdt, int root_offset,
-               uint64_t lpcm_addr, uint64_t lpcm_size);
+int pnv_dt_lpc(struct PnvChip *chip, void *fdt, int root_offset);
 
 #endif /* PPC_PNV_LPC_H */

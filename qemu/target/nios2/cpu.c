@@ -39,9 +39,9 @@ static bool nios2_cpu_has_work(CPUState *cs)
     return cs->interrupt_request & (CPU_INTERRUPT_HARD | CPU_INTERRUPT_NMI);
 }
 
-static void nios2_cpu_reset(DeviceState *dev)
+/* CPUClass::reset() */
+static void nios2_cpu_reset(CPUState *cs)
 {
-    CPUState *cs = CPU(dev);
     Nios2CPU *cpu = NIOS2_CPU(cs);
     Nios2CPUClass *ncc = NIOS2_CPU_GET_CLASS(cpu);
     CPUNios2State *env = &cpu->env;
@@ -51,7 +51,7 @@ static void nios2_cpu_reset(DeviceState *dev)
         log_cpu_state(cs, 0);
     }
 
-    ncc->parent_reset(dev);
+    ncc->parent_reset(cs);
 
     memset(env->regs, 0, sizeof(uint32_t) * NUM_CORE_REGS);
     env->regs[R_PC] = cpu->reset_addr;
@@ -124,7 +124,7 @@ static void nios2_cpu_disas_set_info(CPUState *cpu, disassemble_info *info)
 #endif
 }
 
-static int nios2_cpu_gdb_read_register(CPUState *cs, GByteArray *mem_buf, int n)
+static int nios2_cpu_gdb_read_register(CPUState *cs, uint8_t *mem_buf, int n)
 {
     Nios2CPU *cpu = NIOS2_CPU(cs);
     CPUClass *cc = CPU_GET_CLASS(cs);
@@ -187,8 +187,9 @@ static void nios2_cpu_class_init(ObjectClass *oc, void *data)
 
     device_class_set_parent_realize(dc, nios2_cpu_realizefn,
                                     &ncc->parent_realize);
-    device_class_set_props(dc, nios2_properties);
-    device_class_set_parent_reset(dc, nios2_cpu_reset, &ncc->parent_reset);
+    dc->props = nios2_properties;
+    ncc->parent_reset = cc->reset;
+    cc->reset = nios2_cpu_reset;
 
     cc->class_by_name = nios2_cpu_class_by_name;
     cc->has_work = nios2_cpu_has_work;

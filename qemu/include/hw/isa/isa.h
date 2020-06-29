@@ -56,6 +56,7 @@ typedef int (*IsaDmaTransferHandler)(void *opaque, int nchan, int pos,
 typedef struct IsaDmaClass {
     InterfaceClass parent;
 
+    IsaDmaTransferMode (*get_transfer_mode)(IsaDma *obj, int nchan);
     bool (*has_autoinitialization)(IsaDma *obj, int nchan);
     int (*read_memory)(IsaDma *obj, int nchan, void *buf, int pos, int len);
     int (*write_memory)(IsaDma *obj, int nchan, void *buf, int pos, int len);
@@ -87,7 +88,7 @@ struct ISADevice {
     DeviceState parent_obj;
     /*< public >*/
 
-    int8_t isairq[2];      /* -1 = unassigned */
+    uint32_t isairq[2];
     int nirqs;
     int ioport_id;
 };
@@ -95,9 +96,9 @@ struct ISADevice {
 ISABus *isa_bus_new(DeviceState *dev, MemoryRegion *address_space,
                     MemoryRegion *address_space_io, Error **errp);
 void isa_bus_irqs(ISABus *bus, qemu_irq *irqs);
-qemu_irq isa_get_irq(ISADevice *dev, unsigned isairq);
-void isa_init_irq(ISADevice *dev, qemu_irq *p, unsigned isairq);
-void isa_connect_gpio_out(ISADevice *isadev, int gpioirq, unsigned isairq);
+qemu_irq isa_get_irq(ISADevice *dev, int isairq);
+void isa_init_irq(ISADevice *dev, qemu_irq *p, int isairq);
+void isa_connect_gpio_out(ISADevice *isadev, int gpioirq, int isairq);
 void isa_bus_dma(ISABus *bus, IsaDma *dma8, IsaDma *dma16);
 IsaDma *isa_get_dma(ISABus *bus, int nchan);
 MemoryRegion *isa_address_space(ISADevice *dev);

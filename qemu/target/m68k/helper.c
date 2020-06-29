@@ -68,19 +68,23 @@ void m68k_cpu_list(void)
     g_slist_free(list);
 }
 
-static int cf_fpu_gdb_get_reg(CPUM68KState *env, GByteArray *mem_buf, int n)
+static int cf_fpu_gdb_get_reg(CPUM68KState *env, uint8_t *mem_buf, int n)
 {
     if (n < 8) {
         float_status s;
-        return gdb_get_reg64(mem_buf, floatx80_to_float64(env->fregs[n].d, &s));
+        stfq_p(mem_buf, floatx80_to_float64(env->fregs[n].d, &s));
+        return 8;
     }
     switch (n) {
     case 8: /* fpcontrol */
-        return gdb_get_reg32(mem_buf, env->fpcr);
+        stl_be_p(mem_buf, env->fpcr);
+        return 4;
     case 9: /* fpstatus */
-        return gdb_get_reg32(mem_buf, env->fpsr);
+        stl_be_p(mem_buf, env->fpsr);
+        return 4;
     case 10: /* fpiar, not implemented */
-        return gdb_get_reg32(mem_buf, 0);
+        memset(mem_buf, 0, 4);
+        return 4;
     }
     return 0;
 }
@@ -105,21 +109,24 @@ static int cf_fpu_gdb_set_reg(CPUM68KState *env, uint8_t *mem_buf, int n)
     return 0;
 }
 
-static int m68k_fpu_gdb_get_reg(CPUM68KState *env, GByteArray *mem_buf, int n)
+static int m68k_fpu_gdb_get_reg(CPUM68KState *env, uint8_t *mem_buf, int n)
 {
     if (n < 8) {
-        int len = gdb_get_reg16(mem_buf, env->fregs[n].l.upper);
-        len += gdb_get_reg16(mem_buf, 0);
-        len += gdb_get_reg64(mem_buf, env->fregs[n].l.lower);
-        return len;
+        stw_be_p(mem_buf, env->fregs[n].l.upper);
+        memset(mem_buf + 2, 0, 2);
+        stq_be_p(mem_buf + 4, env->fregs[n].l.lower);
+        return 12;
     }
     switch (n) {
     case 8: /* fpcontrol */
-        return gdb_get_reg32(mem_buf, env->fpcr);
+        stl_be_p(mem_buf, env->fpcr);
+        return 4;
     case 9: /* fpstatus */
-        return gdb_get_reg32(mem_buf, env->fpsr);
+        stl_be_p(mem_buf, env->fpsr);
+        return 4;
     case 10: /* fpiar, not implemented */
-        return gdb_get_reg32(mem_buf, 0);
+        memset(mem_buf, 0, 4);
+        return 4;
     }
     return 0;
 }
@@ -196,17 +203,9 @@ void HELPER(m68k_movec_to)(CPUM68KState *env, uint32_t reg, uint32_t val)
     case M68K_CR_VBR:
         env->vbr = val;
         return;
-    /* MC680[2346]0 */
+    /* MC680[234]0 */
     case M68K_CR_CACR:
-        if (m68k_feature(env, M68K_FEATURE_M68020)) {
-            env->cacr = val & 0x0000000f;
-        } else if (m68k_feature(env, M68K_FEATURE_M68030)) {
-            env->cacr = val & 0x00003f1f;
-        } else if (m68k_feature(env, M68K_FEATURE_M68040)) {
-            env->cacr = val & 0x80008000;
-        } else if (m68k_feature(env, M68K_FEATURE_M68060)) {
-            env->cacr = val & 0xf8e0e000;
-        }
+        env->cacr = val;
         m68k_switch_sp(env);
         return;
     /* MC680[34]0 */

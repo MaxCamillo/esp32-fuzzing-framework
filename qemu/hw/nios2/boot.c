@@ -109,7 +109,6 @@ static int nios2_load_dtb(struct nios2_boot_info bi, const uint32_t ramsize,
     }
 
     cpu_physical_memory_write(bi.fdt, fdt, fdt_size);
-    g_free(fdt);
     return fdt_size;
 }
 
@@ -148,7 +147,7 @@ void nios2_load_kernel(Nios2CPU *cpu, hwaddr ddr_base,
 
         /* Boots a kernel elf binary. */
         kernel_size = load_elf(kernel_filename, NULL, NULL, NULL,
-                               &entry, &low, &high, NULL,
+                               &entry, &low, &high,
                                big_endian, EM_ALTERA_NIOS2, 0, 0);
         if ((uint32_t)entry == 0xc0000000) {
             /*
@@ -159,7 +158,7 @@ void nios2_load_kernel(Nios2CPU *cpu, hwaddr ddr_base,
              */
             kernel_size = load_elf(kernel_filename, NULL,
                                    translate_kernel_address, NULL,
-                                   &entry, NULL, NULL, NULL,
+                                   &entry, NULL, NULL,
                                    big_endian, EM_ALTERA_NIOS2, 0, 0);
             boot_info.bootstrap_pc = ddr_base + 0xc0000000 +
                 (entry & 0x07ffffff);

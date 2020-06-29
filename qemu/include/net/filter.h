@@ -62,8 +62,6 @@ struct NetFilterState {
     NetClientState *netdev;
     NetFilterDirection direction;
     bool on;
-    char *position;
-    bool insert_before_flag;
     QTAILQ_ENTRY(NetFilterState) next;
 };
 

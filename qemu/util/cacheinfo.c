@@ -93,16 +93,10 @@ static void sys_cache_info(int *isize, int *dsize)
 static void sys_cache_info(int *isize, int *dsize)
 {
 # ifdef _SC_LEVEL1_ICACHE_LINESIZE
-    int tmp_isize = (int) sysconf(_SC_LEVEL1_ICACHE_LINESIZE);
-    if (tmp_isize > 0) {
-        *isize = tmp_isize;
-    }
+    *isize = sysconf(_SC_LEVEL1_ICACHE_LINESIZE);
 # endif
 # ifdef _SC_LEVEL1_DCACHE_LINESIZE
-    int tmp_dsize = (int) sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
-    if (tmp_dsize > 0) {
-        *dsize = tmp_dsize;
-    }
+    *dsize = sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
 # endif
 }
 #endif /* sys_cache_info */

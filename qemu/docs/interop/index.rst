@@ -13,8 +13,6 @@ Contents:
    :maxdepth: 2
 
    bitmaps
-   dbus
-   dbus-vmstate
    live-block-operations
    pr-helper
    qemu-ga

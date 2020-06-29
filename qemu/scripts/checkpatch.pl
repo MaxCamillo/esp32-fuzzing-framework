@@ -35,8 +35,6 @@ my $summary_file = 0;
 my $root;
 my %debug;
 my $help = 0;
-my $acpi_testexpected;
-my $acpi_nontestexpected;
 
 sub help {
 	my ($exitcode) = @_;
@@ -464,7 +462,7 @@ sub top_of_kernel_tree {
 	my @tree_check = (
 		"COPYING", "MAINTAINERS", "Makefile",
 		"README.rst", "docs", "VERSION",
-		"linux-user", "softmmu"
+		"vl.c"
 	);
 
 	foreach my $check (@tree_check) {
@@ -1258,27 +1256,6 @@ sub WARN {
 	}
 }
 
-# According to tests/qtest/bios-tables-test.c: do not
-# change expected file in the same commit with adding test
-sub checkfilename {
-	my ($name) = @_;
-	if ($name =~ m#^tests/data/acpi/# and
-		# make exception for a shell script that rebuilds the files
-		not $name =~ m#^\.sh$# or
-		$name =~ m#^tests/qtest/bios-tables-test-allowed-diff.h$#) {
-		$acpi_testexpected = $name;
-	} else {
-		$acpi_nontestexpected = $name;
-	}
-	if (defined $acpi_testexpected and defined $acpi_nontestexpected) {
-		ERROR("Do not add expected files together with tests, " .
-		      "follow instructions in " .
-		      "tests/qtest/bios-tables-test.c: both " .
-		      $acpi_testexpected . " and " .
-		      $acpi_nontestexpected . " found\n");
-	}
-}
-
 sub process {
 	my $filename = shift;
 
@@ -1454,11 +1431,9 @@ sub process {
 		if ($line =~ /^diff --git.*?(\S+)$/) {
 			$realfile = $1;
 			$realfile =~ s@^([^/]*)/@@ if (!$file);
-	                checkfilename($realfile);
 		} elsif ($line =~ /^\+\+\+\s+(\S+)/) {
 			$realfile = $1;
 			$realfile =~ s@^([^/]*)/@@ if (!$file);
-	                checkfilename($realfile);
 
 			$p1_prefix = $1;
 			if (!$file && $tree && $p1_prefix ne '' &&
@@ -1483,12 +1458,6 @@ sub process {
 			if ($realfile =~ /(\bMakefile(?:\.objs)?|\.c|\.cc|\.cpp|\.h|\.mak|\.[sS])$/) {
 				ERROR("do not set execute permissions for source files\n" . $permhere);
 			}
-		}
-
-# Only allow Python 3 interpreter
-		if ($realline == 1 &&
-			$line =~ /^\+#!\ *\/usr\/bin\/(?:env )?python$/) {
-			ERROR("please use python3 interpreter\n" . $herecurr);
 		}
 
 # Accept git diff extended headers as valid patches
@@ -1853,11 +1822,6 @@ sub process {
 # 'do ... while (0/false)' only makes sense in macros, without trailing ';'
 		if ($line =~ /while\s*\((0|false)\);/) {
 			ERROR("suspicious ; after while (0)\n" . $herecurr);
-		}
-
-# Check superfluous trailing ';'
-		if ($line =~ /;;$/) {
-			ERROR("superfluous trailing semicolon\n" . $herecurr);
 		}
 
 # Check relative indent for conditionals and blocks.

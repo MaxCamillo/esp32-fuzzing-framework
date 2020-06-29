@@ -38,7 +38,6 @@ typedef struct BDRVBackupTopState {
     BlockCopyState *bcs;
     BdrvChild *target;
     bool active;
-    int64_t cluster_size;
 } BDRVBackupTopState;
 
 static coroutine_fn int backup_top_co_preadv(
@@ -49,17 +48,11 @@ static coroutine_fn int backup_top_co_preadv(
 }
 
 static coroutine_fn int backup_top_cbw(BlockDriverState *bs, uint64_t offset,
-                                       uint64_t bytes, BdrvRequestFlags flags)
+                                       uint64_t bytes)
 {
     BDRVBackupTopState *s = bs->opaque;
-    uint64_t off, end;
-
-    if (flags & BDRV_REQ_WRITE_UNCHANGED) {
-        return 0;
-    }
-
-    off = QEMU_ALIGN_DOWN(offset, s->cluster_size);
-    end = QEMU_ALIGN_UP(offset + bytes, s->cluster_size);
+    uint64_t end = QEMU_ALIGN_UP(offset + bytes, s->bcs->cluster_size);
+    uint64_t off = QEMU_ALIGN_DOWN(offset, s->bcs->cluster_size);
 
     return block_copy(s->bcs, off, end - off, NULL);
 }
@@ -67,7 +60,7 @@ static coroutine_fn int backup_top_cbw(BlockDriverState *bs, uint64_t offset,
 static int coroutine_fn backup_top_co_pdiscard(BlockDriverState *bs,
                                                int64_t offset, int bytes)
 {
-    int ret = backup_top_cbw(bs, offset, bytes, 0);
+    int ret = backup_top_cbw(bs, offset, bytes);
     if (ret < 0) {
         return ret;
     }
@@ -78,7 +71,7 @@ static int coroutine_fn backup_top_co_pdiscard(BlockDriverState *bs,
 static int coroutine_fn backup_top_co_pwrite_zeroes(BlockDriverState *bs,
         int64_t offset, int bytes, BdrvRequestFlags flags)
 {
-    int ret = backup_top_cbw(bs, offset, bytes, flags);
+    int ret = backup_top_cbw(bs, offset, bytes);
     if (ret < 0) {
         return ret;
     }
@@ -91,9 +84,11 @@ static coroutine_fn int backup_top_co_pwritev(BlockDriverState *bs,
                                               uint64_t bytes,
                                               QEMUIOVector *qiov, int flags)
 {
-    int ret = backup_top_cbw(bs, offset, bytes, flags);
-    if (ret < 0) {
-        return ret;
+    if (!(flags & BDRV_REQ_WRITE_UNCHANGED)) {
+        int ret = backup_top_cbw(bs, offset, bytes);
+        if (ret < 0) {
+            return ret;
+        }
     }
 
     return bdrv_co_pwritev(bs->backing, offset, bytes, qiov, flags);
@@ -195,19 +190,13 @@ BlockDriverState *bdrv_backup_top_append(BlockDriverState *source,
     BlockDriverState *top = bdrv_new_open_driver(&bdrv_backup_top_filter,
                                                  filter_node_name,
                                                  BDRV_O_RDWR, errp);
-    bool appended = false;
 
     if (!top) {
         return NULL;
     }
 
-    state = top->opaque;
     top->total_sectors = source->total_sectors;
-    top->supported_write_flags = BDRV_REQ_WRITE_UNCHANGED |
-            (BDRV_REQ_FUA & source->supported_write_flags);
-    top->supported_zero_flags = BDRV_REQ_WRITE_UNCHANGED |
-            ((BDRV_REQ_FUA | BDRV_REQ_MAY_UNMAP | BDRV_REQ_NO_FALLBACK) &
-             source->supported_zero_flags);
+    top->opaque = state = g_new0(BDRVBackupTopState, 1);
 
     bdrv_ref(target);
     state->target = bdrv_attach_child(top, target, "target", &child_file, errp);
@@ -223,9 +212,8 @@ BlockDriverState *bdrv_backup_top_append(BlockDriverState *source,
     bdrv_append(top, source, &local_err);
     if (local_err) {
         error_prepend(&local_err, "Cannot append backup-top filter: ");
-        goto fail;
+        goto append_failed;
     }
-    appended = true;
 
     /*
      * bdrv_append() finished successfully, now we can require permissions
@@ -236,15 +224,14 @@ BlockDriverState *bdrv_backup_top_append(BlockDriverState *source,
     if (local_err) {
         error_prepend(&local_err,
                       "Cannot set permissions for backup-top filter: ");
-        goto fail;
+        goto failed_after_append;
     }
 
-    state->cluster_size = cluster_size;
     state->bcs = block_copy_state_new(top->backing, state->target,
                                       cluster_size, write_flags, &local_err);
     if (local_err) {
         error_prepend(&local_err, "Cannot create block-copy-state: ");
-        goto fail;
+        goto failed_after_append;
     }
     *bcs = state->bcs;
 
@@ -252,15 +239,14 @@ BlockDriverState *bdrv_backup_top_append(BlockDriverState *source,
 
     return top;
 
-fail:
-    if (appended) {
-        state->active = false;
-        bdrv_backup_top_drop(top);
-    } else {
-        bdrv_unref(top);
-    }
+failed_after_append:
+    state->active = false;
+    bdrv_backup_top_drop(top);
 
+append_failed:
     bdrv_drained_end(source);
+    bdrv_unref_child(top, state->target);
+    bdrv_unref(top);
     error_propagate(errp, local_err);
 
     return NULL;
@@ -269,10 +255,13 @@ fail:
 void bdrv_backup_top_drop(BlockDriverState *bs)
 {
     BDRVBackupTopState *s = bs->opaque;
-
-    bdrv_drained_begin(bs);
+    AioContext *aio_context = bdrv_get_aio_context(bs);
 
     block_copy_state_free(s->bcs);
+
+    aio_context_acquire(aio_context);
+
+    bdrv_drained_begin(bs);
 
     s->active = false;
     bdrv_child_refresh_perms(bs, bs->backing, &error_abort);
@@ -282,4 +271,6 @@ void bdrv_backup_top_drop(BlockDriverState *bs)
     bdrv_drained_end(bs);
 
     bdrv_unref(bs);
+
+    aio_context_release(aio_context);
 }

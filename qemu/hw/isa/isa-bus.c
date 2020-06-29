@@ -82,27 +82,24 @@ void isa_bus_irqs(ISABus *bus, qemu_irq *irqs)
  * This function is only for special cases such as the 'ferr', and
  * temporary use for normal devices until they are converted to qdev.
  */
-qemu_irq isa_get_irq(ISADevice *dev, unsigned isairq)
+qemu_irq isa_get_irq(ISADevice *dev, int isairq)
 {
     assert(!dev || ISA_BUS(qdev_get_parent_bus(DEVICE(dev))) == isabus);
-    if (isairq >= ISA_NUM_IRQS) {
+    if (isairq < 0 || isairq > 15) {
         hw_error("isa irq %d invalid", isairq);
     }
     return isabus->irqs[isairq];
 }
 
-void isa_init_irq(ISADevice *dev, qemu_irq *p, unsigned isairq)
+void isa_init_irq(ISADevice *dev, qemu_irq *p, int isairq)
 {
     assert(dev->nirqs < ARRAY_SIZE(dev->isairq));
-    if (isairq >= ISA_NUM_IRQS) {
-        hw_error("isa irq %d invalid", isairq);
-    }
     dev->isairq[dev->nirqs] = isairq;
     *p = isa_get_irq(dev, isairq);
     dev->nirqs++;
 }
 
-void isa_connect_gpio_out(ISADevice *isadev, int gpioirq, unsigned isairq)
+void isa_connect_gpio_out(ISADevice *isadev, int gpioirq, int isairq)
 {
     qemu_irq irq;
     isa_init_irq(isadev, &irq, isairq);

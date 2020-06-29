@@ -16,20 +16,24 @@
 
 import os
 import re
+import sys
 from collections import OrderedDict
 
 from qapi.error import QAPIParseError, QAPISemError
 from qapi.source import QAPISourceInfo
 
 
-class QAPISchemaParser:
+class QAPISchemaParser(object):
 
     def __init__(self, fname, previously_included=None, incl_info=None):
         previously_included = previously_included or set()
         previously_included.add(os.path.abspath(fname))
 
         try:
-            fp = open(fname, 'r', encoding='utf-8')
+            if sys.version_info[0] >= 3:
+                fp = open(fname, 'r', encoding='utf-8')
+            else:
+                fp = open(fname, 'r')
             self.src = fp.read()
         except IOError as e:
             raise QAPISemError(incl_info or QAPISourceInfo(None, None, None),
@@ -282,13 +286,14 @@ class QAPISchemaParser:
                 doc.end_comment()
                 self.accept()
                 return doc
-            doc.append(self.val)
+            else:
+                doc.append(self.val)
             self.accept(False)
 
         raise QAPIParseError(self, "documentation comment must end with '##'")
 
 
-class QAPIDoc:
+class QAPIDoc(object):
     """
     A documentation comment block, either definition or free-form
 
@@ -307,7 +312,7 @@ class QAPIDoc:
     Free-form documentation blocks consist only of a body section.
     """
 
-    class Section:
+    class Section(object):
         def __init__(self, name=None):
             # optional section name (argument/member or section name)
             self.name = name
@@ -319,7 +324,7 @@ class QAPIDoc:
 
     class ArgSection(Section):
         def __init__(self, name):
-            super().__init__(name)
+            QAPIDoc.Section.__init__(self, name)
             self.member = None
 
         def connect(self, member):
@@ -491,7 +496,7 @@ class QAPIDoc:
             raise QAPIParseError(self._parser,
                                  "'%s' can't follow '%s' section"
                                  % (name, self.sections[0].name))
-        if self._is_section_tag(name):
+        elif self._is_section_tag(name):
             line = line[len(name)+1:]
             self._start_section(name[:-1])
 
@@ -555,6 +560,7 @@ class QAPIDoc:
             raise QAPISemError(feature.info,
                                "feature '%s' lacks documentation"
                                % feature.name)
+            self.features[feature.name] = QAPIDoc.ArgSection(feature.name)
         self.features[feature.name].connect(feature)
 
     def check_expr(self, expr):

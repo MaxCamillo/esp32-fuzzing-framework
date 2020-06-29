@@ -197,20 +197,24 @@ int sclp_service_call(CPUS390XState *env, uint64_t sccb, uint32_t code)
 {
     SCLPDevice *sclp = get_sclp_device();
     SCLPDeviceClass *sclp_c = SCLP_GET_CLASS(sclp);
+    int r = 0;
     SCCB work_sccb;
 
     hwaddr sccb_len = sizeof(SCCB);
 
     /* first some basic checks on program checks */
     if (env->psw.mask & PSW_MASK_PSTATE) {
-        return -PGM_PRIVILEGED;
+        r = -PGM_PRIVILEGED;
+        goto out;
     }
     if (cpu_physical_memory_is_io(sccb)) {
-        return -PGM_ADDRESSING;
+        r = -PGM_ADDRESSING;
+        goto out;
     }
     if ((sccb & ~0x1fffUL) == 0 || (sccb & ~0x1fffUL) == env->psa
         || (sccb & ~0x7ffffff8UL) != 0) {
-        return -PGM_SPECIFICATION;
+        r = -PGM_SPECIFICATION;
+        goto out;
     }
 
     /*
@@ -222,7 +226,8 @@ int sclp_service_call(CPUS390XState *env, uint64_t sccb, uint32_t code)
 
     /* Valid sccb sizes */
     if (be16_to_cpu(work_sccb.h.length) < sizeof(SCCBHeader)) {
-        return -PGM_SPECIFICATION;
+        r = -PGM_SPECIFICATION;
+        goto out;
     }
 
     switch (code & SCLP_CMD_CODE_MASK) {
@@ -252,7 +257,8 @@ out_write:
 
     sclp_c->service_interrupt(sclp, sccb);
 
-    return 0;
+out:
+    return r;
 }
 
 static void service_interrupt(SCLPDevice *sclp, uint32_t sccb)
@@ -327,20 +333,27 @@ out:
 static void sclp_memory_init(SCLPDevice *sclp)
 {
     MachineState *machine = MACHINE(qdev_get_machine());
-    MachineClass *machine_class = MACHINE_GET_CLASS(qdev_get_machine());
     ram_addr_t initial_mem = machine->ram_size;
     int increment_size = 20;
 
     /* The storage increment size is a multiple of 1M and is a power of 2.
-     * For some machine types, the number of storage increments must be
-     * MAX_STORAGE_INCREMENTS or fewer.
+     * The number of storage increments must be MAX_STORAGE_INCREMENTS or fewer.
      * The variable 'increment_size' is an exponent of 2 that can be
      * used to calculate the size (in bytes) of an increment. */
-    while (machine_class->fixup_ram_size != NULL &&
-           (initial_mem >> increment_size) > MAX_STORAGE_INCREMENTS) {
+    while ((initial_mem >> increment_size) > MAX_STORAGE_INCREMENTS) {
         increment_size++;
     }
     sclp->increment_size = increment_size;
+
+    /* The core memory area needs to be aligned with the increment size.
+     * In effect, this can cause the user-specified memory size to be rounded
+     * down to align with the nearest increment boundary. */
+    initial_mem = initial_mem >> increment_size << increment_size;
+
+    machine->ram_size = initial_mem;
+    machine->maxram_size = initial_mem;
+    /* let's propagate the changed ram size into the global variable. */
+    ram_size = initial_mem;
 }
 
 static void sclp_init(Object *obj)

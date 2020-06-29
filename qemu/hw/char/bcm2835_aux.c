@@ -299,7 +299,7 @@ static void bcm2835_aux_class_init(ObjectClass *oc, void *data)
     dc->realize = bcm2835_aux_realize;
     dc->vmsd = &vmstate_bcm2835_aux;
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
-    device_class_set_props(dc, bcm2835_aux_props);
+    dc->props = bcm2835_aux_props;
 }
 
 static const TypeInfo bcm2835_aux_info = {

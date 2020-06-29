@@ -244,9 +244,6 @@ uint64_t mos6522_read(void *opaque, hwaddr addr, unsigned size)
         val = s->b;
         break;
     case VIA_REG_A:
-       qemu_log_mask(LOG_UNIMP, "Read access to register A with handshake");
-       /* fall through */
-    case VIA_REG_ANH:
         val = s->a;
         break;
     case VIA_REG_DIRB:
@@ -300,7 +297,9 @@ uint64_t mos6522_read(void *opaque, hwaddr addr, unsigned size)
         val = s->ier | 0x80;
         break;
     default:
-        g_assert_not_reached();
+    case VIA_REG_ANH:
+        val = s->anh;
+        break;
     }
 
     if (addr != VIA_REG_IFR || val != 0) {
@@ -323,9 +322,6 @@ void mos6522_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
         mdc->portB_write(s);
         break;
     case VIA_REG_A:
-       qemu_log_mask(LOG_UNIMP, "Write access to register A with handshake");
-       /* fall through */
-    case VIA_REG_ANH:
         s->a = (s->a & ~s->dira) | (val & s->dira);
         mdc->portA_write(s);
         break;
@@ -399,7 +395,9 @@ void mos6522_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
                               qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
         break;
     default:
-        g_assert_not_reached();
+    case VIA_REG_ANH:
+        s->anh = val;
+        break;
     }
 }
 
@@ -441,6 +439,7 @@ const VMStateDescription vmstate_mos6522 = {
         VMSTATE_UINT8(pcr, MOS6522State),
         VMSTATE_UINT8(ifr, MOS6522State),
         VMSTATE_UINT8(ier, MOS6522State),
+        VMSTATE_UINT8(anh, MOS6522State),
         VMSTATE_STRUCT_ARRAY(timers, MOS6522State, 2, 0,
                              vmstate_mos6522_timer, MOS6522Timer),
         VMSTATE_END_OF_LIST()
@@ -461,6 +460,7 @@ static void mos6522_reset(DeviceState *dev)
     s->ifr = 0;
     s->ier = 0;
     /* s->ier = T1_INT | SR_INT; */
+    s->anh = 0;
 
     s->timers[0].frequency = s->frequency;
     s->timers[0].latch = 0xffff;
@@ -502,7 +502,7 @@ static void mos6522_class_init(ObjectClass *oc, void *data)
 
     dc->reset = mos6522_reset;
     dc->vmsd = &vmstate_mos6522;
-    device_class_set_props(dc, mos6522_properties);
+    dc->props = mos6522_properties;
     mdc->parent_reset = dc->reset;
     mdc->set_sr_int = mos6522_set_sr_int;
     mdc->portB_write = mos6522_portB_write;

@@ -40,11 +40,11 @@ static const char *pnv_core_cpu_typename(PnvCore *pc)
     return cpu_type;
 }
 
-static void pnv_core_cpu_reset(PnvCore *pc, PowerPCCPU *cpu)
+static void pnv_core_cpu_reset(PowerPCCPU *cpu, PnvChip *chip)
 {
     CPUState *cs = CPU(cpu);
     CPUPPCState *env = &cpu->env;
-    PnvChipClass *pcc = PNV_CHIP_GET_CLASS(pc->chip);
+    PnvChipClass *pcc = PNV_CHIP_GET_CLASS(chip);
 
     cpu_reset(cs);
 
@@ -56,9 +56,7 @@ static void pnv_core_cpu_reset(PnvCore *pc, PowerPCCPU *cpu)
     env->nip = 0x10;
     env->msr |= MSR_HVB; /* Hypervisor mode */
 
-    env->spr[SPR_HRMOR] = pc->hrmor;
-
-    pcc->intc_reset(pc->chip, cpu);
+    pcc->intc_reset(chip, cpu);
 }
 
 /*
@@ -164,14 +162,14 @@ static const MemoryRegionOps pnv_core_power9_xscom_ops = {
     .endianness = DEVICE_BIG_ENDIAN,
 };
 
-static void pnv_core_cpu_realize(PnvCore *pc, PowerPCCPU *cpu, Error **errp)
+static void pnv_core_cpu_realize(PowerPCCPU *cpu, PnvChip *chip, Error **errp)
 {
     CPUPPCState *env = &cpu->env;
     int core_pir;
     int thread_index = 0; /* TODO: TCG supports only one thread */
     ppc_spr_t *pir = &env->spr_cb[SPR_PIR];
     Error *local_err = NULL;
-    PnvChipClass *pcc = PNV_CHIP_GET_CLASS(pc->chip);
+    PnvChipClass *pcc = PNV_CHIP_GET_CLASS(chip);
 
     object_property_set_bool(OBJECT(cpu), true, "realized", &local_err);
     if (local_err) {
@@ -179,13 +177,13 @@ static void pnv_core_cpu_realize(PnvCore *pc, PowerPCCPU *cpu, Error **errp)
         return;
     }
 
-    pcc->intc_create(pc->chip, cpu, &local_err);
+    pcc->intc_create(chip, cpu, &local_err);
     if (local_err) {
         error_propagate(errp, local_err);
         return;
     }
 
-    core_pir = object_property_get_uint(OBJECT(pc), "pir", &error_abort);
+    core_pir = object_property_get_uint(OBJECT(cpu), "core-pir", &error_abort);
 
     /*
      * The PIR of a thread is the core PIR + the thread index. We will
@@ -205,7 +203,7 @@ static void pnv_core_reset(void *dev)
     int i;
 
     for (i = 0; i < cc->nr_threads; i++) {
-        pnv_core_cpu_reset(pc, pc->threads[i]);
+        pnv_core_cpu_reset(pc->threads[i], pc->chip);
     }
 }
 
@@ -219,8 +217,15 @@ static void pnv_core_realize(DeviceState *dev, Error **errp)
     void *obj;
     int i, j;
     char name[32];
+    Object *chip;
 
-    assert(pc->chip);
+    chip = object_property_get_link(OBJECT(dev), "chip", &local_err);
+    if (!chip) {
+        error_propagate_prepend(errp, local_err,
+                                "required link 'chip' not found: ");
+        return;
+    }
+    pc->chip = PNV_CHIP(chip);
 
     pc->threads = g_new(PowerPCCPU *, cc->nr_threads);
     for (i = 0; i < cc->nr_threads; i++) {
@@ -233,6 +238,8 @@ static void pnv_core_realize(DeviceState *dev, Error **errp)
 
         snprintf(name, sizeof(name), "thread[%d]", i);
         object_property_add_child(OBJECT(pc), name, obj, &error_abort);
+        object_property_add_alias(obj, "core-pir", OBJECT(pc),
+                                  "pir", &error_abort);
 
         cpu->machine_data = g_new0(PnvCPUState, 1);
 
@@ -240,14 +247,13 @@ static void pnv_core_realize(DeviceState *dev, Error **errp)
     }
 
     for (j = 0; j < cc->nr_threads; j++) {
-        pnv_core_cpu_realize(pc, pc->threads[j], &local_err);
+        pnv_core_cpu_realize(pc->threads[j], pc->chip, &local_err);
         if (local_err) {
             goto err;
         }
     }
 
     snprintf(name, sizeof(name), "xscom-core.%d", cc->core_id);
-    /* TODO: check PNV_XSCOM_EX_SIZE for p10 */
     pnv_xscom_region_init(&pc->xscom_regs, OBJECT(dev), pcc->xscom_ops,
                           pc, name, PNV_XSCOM_EX_SIZE);
 
@@ -263,12 +269,12 @@ err:
     error_propagate(errp, local_err);
 }
 
-static void pnv_core_cpu_unrealize(PnvCore *pc, PowerPCCPU *cpu)
+static void pnv_core_cpu_unrealize(PowerPCCPU *cpu, PnvChip *chip)
 {
     PnvCPUState *pnv_cpu = pnv_cpu_state(cpu);
-    PnvChipClass *pcc = PNV_CHIP_GET_CLASS(pc->chip);
+    PnvChipClass *pcc = PNV_CHIP_GET_CLASS(chip);
 
-    pcc->intc_destroy(pc->chip, cpu);
+    pcc->intc_destroy(chip, cpu);
     cpu_remove_sync(CPU(cpu));
     cpu->machine_data = NULL;
     g_free(pnv_cpu);
@@ -284,15 +290,13 @@ static void pnv_core_unrealize(DeviceState *dev, Error **errp)
     qemu_unregister_reset(pnv_core_reset, pc);
 
     for (i = 0; i < cc->nr_threads; i++) {
-        pnv_core_cpu_unrealize(pc, pc->threads[i]);
+        pnv_core_cpu_unrealize(pc->threads[i], pc->chip);
     }
     g_free(pc->threads);
 }
 
 static Property pnv_core_properties[] = {
     DEFINE_PROP_UINT32("pir", PnvCore, pir, 0),
-    DEFINE_PROP_UINT64("hrmor", PnvCore, hrmor, 0),
-    DEFINE_PROP_LINK("chip", PnvCore, chip, TYPE_PNV_CHIP, PnvChip *),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -310,22 +314,13 @@ static void pnv_core_power9_class_init(ObjectClass *oc, void *data)
     pcc->xscom_ops = &pnv_core_power9_xscom_ops;
 }
 
-static void pnv_core_power10_class_init(ObjectClass *oc, void *data)
-{
-    PnvCoreClass *pcc = PNV_CORE_CLASS(oc);
-
-    /* TODO: Use the P9 XSCOMs for now on P10 */
-    pcc->xscom_ops = &pnv_core_power9_xscom_ops;
-}
-
 static void pnv_core_class_init(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 
     dc->realize = pnv_core_realize;
     dc->unrealize = pnv_core_unrealize;
-    device_class_set_props(dc, pnv_core_properties);
-    dc->user_creatable = false;
+    dc->props = pnv_core_properties;
 }
 
 #define DEFINE_PNV_CORE_TYPE(family, cpu_model) \
@@ -348,7 +343,6 @@ static const TypeInfo pnv_core_infos[] = {
     DEFINE_PNV_CORE_TYPE(power8, "power8_v2.0"),
     DEFINE_PNV_CORE_TYPE(power8, "power8nvl_v1.0"),
     DEFINE_PNV_CORE_TYPE(power9, "power9_v2.0"),
-    DEFINE_PNV_CORE_TYPE(power10, "power10_v1.0"),
 };
 
 DEFINE_TYPES(pnv_core_infos)
@@ -423,8 +417,7 @@ static void pnv_quad_class_init(ObjectClass *oc, void *data)
     DeviceClass *dc = DEVICE_CLASS(oc);
 
     dc->realize = pnv_quad_realize;
-    device_class_set_props(dc, pnv_quad_properties);
-    dc->user_creatable = false;
+    dc->props = pnv_quad_properties;
 }
 
 static const TypeInfo pnv_quad_info = {

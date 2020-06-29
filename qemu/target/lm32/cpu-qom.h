@@ -44,7 +44,7 @@ typedef struct LM32CPUClass {
     /*< public >*/
 
     DeviceRealize parent_realize;
-    DeviceReset parent_reset;
+    void (*parent_reset)(CPUState *cpu);
 } LM32CPUClass;
 
 typedef struct LM32CPU LM32CPU;

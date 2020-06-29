@@ -530,12 +530,7 @@ void qemu_fdt_dumpdtb(void *fdt, int size)
 
     if (dumpdtb) {
         /* Dump the dtb to a file and quit */
-        if (g_file_set_contents(dumpdtb, fdt, size, NULL)) {
-            info_report("dtb dumped to %s. Exiting.", dumpdtb);
-            exit(0);
-        }
-        error_report("%s: Failed dumping dtb to %s", __func__, dumpdtb);
-        exit(1);
+        exit(g_file_set_contents(dumpdtb, fdt, size, NULL) ? 0 : 1);
     }
 }
 

@@ -3,8 +3,8 @@
 
 const VMStateDescription vmstate_dummy = {};
 
-int vmstate_register_with_alias_id(VMStateIf *obj,
-                                   uint32_t instance_id,
+int vmstate_register_with_alias_id(DeviceState *dev,
+                                   int instance_id,
                                    const VMStateDescription *vmsd,
                                    void *base, int alias_id,
                                    int required_for_version,
@@ -13,7 +13,7 @@ int vmstate_register_with_alias_id(VMStateIf *obj,
     return 0;
 }
 
-void vmstate_unregister(VMStateIf *obj,
+void vmstate_unregister(DeviceState *dev,
                         const VMStateDescription *vmsd,
                         void *opaque)
 {

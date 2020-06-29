@@ -106,19 +106,18 @@ def _get_so_libs(executable):
     """Return a list of libraries associated with an executable.
 
     The paths may be symbolic links which would need to be resolved to
-    ensure the right data is copied."""
+    ensure theright data is copied."""
 
     libs = []
-    ldd_re = re.compile(r"(?:\S+ => )?(\S*) \(:?0x[0-9a-f]+\)")
+    ldd_re = re.compile(r"(/.*/)(\S*)")
     try:
         ldd_output = subprocess.check_output(["ldd", executable]).decode('utf-8')
         for line in ldd_output.split("\n"):
             search = ldd_re.search(line)
-            if search:
-                try:
-                    libs.append(s.group(1))
-                except IndexError:
-                    pass
+            if search and len(search.groups()) == 2:
+                so_path = search.groups()[0]
+                so_lib = search.groups()[1]
+                libs.append("%s/%s" % (so_path, so_lib))
     except subprocess.CalledProcessError:
         print("%s had no associated libraries (static build?)" % (executable))
 
@@ -146,8 +145,7 @@ def _copy_binary_with_libs(src, bin_dest, dest_dir):
     if libs:
         for l in libs:
             so_path = os.path.dirname(l)
-            real_l = os.path.realpath(l)
-            _copy_with_mkdir(real_l, dest_dir, so_path)
+            _copy_with_mkdir(l, dest_dir, so_path)
 
 
 def _check_binfmt_misc(executable):

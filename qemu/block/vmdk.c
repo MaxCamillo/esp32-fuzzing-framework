@@ -187,7 +187,7 @@ typedef struct VmdkMetaData {
 typedef struct VmdkGrainMarker {
     uint64_t lba;
     uint32_t size;
-    uint8_t  data[];
+    uint8_t  data[0];
 } QEMU_PACKED VmdkGrainMarker;
 
 enum {
@@ -2588,9 +2588,7 @@ exit:
     return blk;
 }
 
-static int coroutine_fn vmdk_co_create_opts(BlockDriver *drv,
-                                            const char *filename,
-                                            QemuOpts *opts,
+static int coroutine_fn vmdk_co_create_opts(const char *filename, QemuOpts *opts,
                                             Error **errp)
 {
     Error *local_err = NULL;

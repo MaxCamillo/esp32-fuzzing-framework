@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python
 
 # QEMU Guest Agent Client
 #
@@ -36,6 +36,7 @@
 # See also: https://wiki.qemu.org/Features/QAPI/GuestAgent
 #
 
+from __future__ import print_function
 import os
 import sys
 import base64

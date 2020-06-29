@@ -36,8 +36,8 @@ typedef struct VHostUserBlk {
     struct vhost_dev dev;
     struct vhost_inflight *inflight;
     VhostUserState vhost_user;
-    struct vhost_virtqueue *vhost_vqs;
-    VirtQueue **virtqs;
+    struct vhost_virtqueue *vqs;
+    guint watch;
     bool connected;
 } VHostUserBlk;
 

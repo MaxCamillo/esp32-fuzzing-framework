@@ -44,7 +44,7 @@ typedef struct AlphaCPUClass {
     /*< public >*/
 
     DeviceRealize parent_realize;
-    DeviceReset parent_reset;
+    void (*parent_reset)(CPUState *cpu);
 } AlphaCPUClass;
 
 typedef struct AlphaCPU AlphaCPU;
