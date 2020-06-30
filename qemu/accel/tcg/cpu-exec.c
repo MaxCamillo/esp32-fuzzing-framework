@@ -365,11 +365,7 @@ static inline tcg_target_ulong cpu_tb_exec(CPUState *cpu, TranslationBlock *itb)
     }
     
     if(env->pc == hfuzz_qemu_setup_point) { //main     
-#ifdef BLACKBOX_FUZZING
         setup_fuzzing_entrypoint(cpu);
-#else
-        hfuzz_qemu_setup(cpu);
-#endif
     }
 #endif //HFUZZ_FORKSERVER
 

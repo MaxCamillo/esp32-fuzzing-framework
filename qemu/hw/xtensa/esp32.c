@@ -58,7 +58,7 @@ const target_ulong hfuzz_qemu_start_code = 0x400C2000;
 const target_ulong hfuzz_qemu_end_code = 0x40BFFFFF;
 
 /**
- * Flage wheater process is a child process.
+ * Flag wheater process is a child process.
  */
 bool childProcess = false;
 
