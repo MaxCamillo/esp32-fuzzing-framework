@@ -83,6 +83,11 @@ Now, the fuzzing can be started by the command
 Multiple exit points can be defined by sepparating them with '+' For example <code> exit=0x400d53f0+0x400d5890 </code> 
 
 
+# Whitebox Fuzzing via JTAG on Hardware
+
+For performing coverage guided fuzzing on the device itself, the code coverage instrumentation from GCC is used. Therefore, each desired source file needs to be compiled with the flag <code> --coverage </code>, as described in https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/app_trace.html#app-trace-gcov-source-code-coverage .
+The generated coverage data gets dumped by the provided fuzzing-hook and translated to the hongfuzz instance. Therefore, the fuzzing-hook needs to be modified to the actual target.  
+
 # Credits
 
 * https://github.com/google/honggfuzz
