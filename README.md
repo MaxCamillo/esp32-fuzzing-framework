@@ -1,4 +1,4 @@
-# ESP32-Fuzzing-Framework
+# ESP32-QEMU-FUZZ
 A Fuzzing Framework for ESP32 applications
 
 # Prerequisites
