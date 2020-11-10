@@ -51,7 +51,7 @@ The coverage data can be very noisy, because the coverage of the whole system is
 <code> readelf ./example_esp32_server/build/tcp_server.elf -s | grep processData </code>
 
 The address space, that should be considered can be limited by changing the variables **hfuzz_qemu_start_code** and **hfuzz_qemu_start_code** in the file <code> ./qemu/hw/xtensa/esp32.c </code>
-For the example application, setting the considered address space to 0x400d5000 - 0x400d5f00 speeds up the fuzzing process increadibly. A fault should then be found within minutes. 
+For the example application, setting the considered address space to 0x400d5000 - 0x400d5f00 speeds up the fuzzing process incredibly. A fault should then be found within minutes. 
 
 # Blackbox Fuzzing within QEMU 
 
@@ -67,7 +67,7 @@ As exit point, the address right after the call to the **processData** function 
 Now, the state of the device, when reaching the entry address has to be dumped. Therefore, the device is connected to the debugger gdb and a breakpoint is set to the entry point by executing <code> br *0x400d5278 </code>. 
 When the breakpoint has it, the output of the command <code> info registers </code> is copied to a text file and the command <code> dump binary memory dump.bin 0x3FF80000 0x3FFFFFFF </code> is executed to dump the whole RAM. 
 
-Finally, the registers which hold the pointer and the lenght of the input data must be examined. Mostly, the can be discovered by reading the register dump file. In this case, register a10 is the length register and the value of register a11, 0x3ffbc43c, is the pointer to the input data. 
+Finally, the registers which hold the pointer and the length of the input data must be examined. Mostly, the can be discovered by reading the register dump file. In this case, register a10 is the length register and the value of register a11, 0x3ffbc43c, is the pointer to the input data. 
 
 Now, the fuzzing can be started by the command
 
@@ -80,13 +80,13 @@ Now, the fuzzing can be started by the command
  -fuzz setup=0x400d560c,entry=0x400d5278,exit=0x400d53f0,len=a10,data=0x3ffbc43c,dump_file=./example_esp32_server/dump.bin,regs_file=./example_esp32_server/regs_dump.txt
 </code>
 
-Multiple exit points can be defined by sepparating them with '+' For example <code> exit=0x400d53f0+0x400d5890 </code> 
+Multiple exit points can be defined by separating them with '+' For example <code> exit=0x400d53f0+0x400d5890 </code> 
 
 
 # Whitebox Fuzzing via JTAG on Hardware
 
 For performing coverage guided fuzzing on the device itself, the code coverage instrumentation from GCC is used. Therefore, each desired source file needs to be compiled with the flag <code> --coverage </code>, as described in https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/app_trace.html#app-trace-gcov-source-code-coverage .
-The generated coverage data gets dumped by the provided fuzzing-hook and translated to the hongfuzz instance. Therefore, the fuzzing-hook needs to be modified to the actual target.  
+The generated coverage data gets dumped by the provided fuzzing-hook and translated to the honggfuzz instance. Therefore, the fuzzing-hook needs to be modified to the actual target.  
 
 # Credits
 
